@@ -550,3 +550,14 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
 # For production, also set SESSION_COOKIE_DOMAIN if needed
 # SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in'  # Uncomment if using subdomain cookies
+
+# CSRF Cookie Configuration
+# CSRF cookie should match session cookie settings for consistency
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
+CSRF_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'  # Match session cookie secure setting
+# CSRF_COOKIE_DOMAIN should match SESSION_COOKIE_DOMAIN if set
+# CSRF_COOKIE_DOMAIN = '.electrocomsolutions.in'  # Uncomment if using subdomain cookies
+CSRF_USE_SESSIONS = False  # Use cookies, not sessions, for CSRF token storage
+CSRF_COOKIE_NAME = 'csrftoken'  # Default cookie name
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  # Header name Django expects
