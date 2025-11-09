@@ -16,8 +16,8 @@ class ProfileAdmin(admin.ModelAdmin):
         ('Address Information', {
             'fields': ('address', 'city', 'state', 'pin_code', 'country')
         }),
-        ('Documents', {
-            'fields': ('aadhar_card', 'pan_card')
+        ('Identity Documents', {
+            'fields': ('aadhar_number', 'pan_number', 'aadhar_card', 'pan_card')
         }),
         ('Audit Information', {
             'fields': ('created_by', 'created_at', 'updated_by', 'updated_at'),
