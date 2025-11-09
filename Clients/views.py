@@ -179,7 +179,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         Returns the created client with all details including aadhar_card_url and pan_card_url.
         """,
         tags=['Client Management'],
-        request_body=ClientCreateUpdateSerializer,
         responses={
             201: openapi.Response(
                 description="Client created successfully",
@@ -208,7 +207,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         Returns the updated client with all details.
         """,
         tags=['Client Management'],
-        request_body=ClientCreateUpdateSerializer,
         responses={
             200: openapi.Response(
                 description="Client updated successfully",
@@ -235,7 +233,6 @@ class ClientViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Client Management'],
-        request_body=ClientCreateUpdateSerializer,
         responses={
             200: openapi.Response(
                 description="Client partially updated successfully",

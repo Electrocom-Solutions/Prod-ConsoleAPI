@@ -379,7 +379,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Use this endpoint when users select multiple tasks and click "Mark as Approved" button to approve them all at once.
         """,
         tags=['Task Management'],
-        request_body=BulkApproveSerializer,
         responses={
             200: openapi.Response(
                 description="Tasks approved successfully",
@@ -516,7 +515,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the created task with all details.
         """,
         tags=['Task Management'],
-        request_body=TaskCreateSerializer,
         responses={
             201: openapi.Response(
                 description="Task created successfully",
@@ -566,7 +564,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the updated task with all details.
         """,
         tags=['Task Management'],
-        request_body=TaskCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Task updated successfully",
@@ -618,7 +615,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Task Management'],
-        request_body=TaskCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Task partially updated successfully",
@@ -680,7 +676,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the created document record with file URL.
         """,
         tags=['Task Management'],
-        request_body=TaskAttachmentUploadSerializer,
         responses={
             201: openapi.Response(
                 description="Document attached successfully",
@@ -742,7 +737,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the created resource record.
         """,
         tags=['Task Management'],
-        request_body=TaskResourceCreateSerializer,
         responses={
             201: openapi.Response(
                 description="Resource attached successfully",
@@ -1080,16 +1074,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the updated task with all details.
         """,
         tags=['Task Management'],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'reason': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description='Optional rejection reason'
-                )
-            },
-            required=[]
-        ),
+        manual_parameters=[
+            openapi.Parameter(
+                'reason',
+                openapi.IN_QUERY,
+                description='Optional rejection reason',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
         responses={
             200: openapi.Response(
                 description="Task rejected successfully",
@@ -1177,7 +1170,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the updated resource record.
         """,
         tags=['Task Management'],
-        request_body=TaskResourceCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Resource updated successfully",

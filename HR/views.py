@@ -228,7 +228,6 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         Returns the created employee with all details.
         """,
         tags=['Employee Management'],
-        request_body=EmployeeCreateSerializer,
         responses={
             201: openapi.Response(
                 description="Employee created successfully",
@@ -257,7 +256,6 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         Returns the updated employee with all details.
         """,
         tags=['Employee Management'],
-        request_body=EmployeeCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Employee updated successfully",
@@ -284,7 +282,6 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Employee Management'],
-        request_body=EmployeeCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Employee partially updated successfully",
@@ -642,7 +639,6 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         Returns the created contract worker with all details.
         """,
         tags=['Contract Worker Management'],
-        request_body=ContractWorkerCreateSerializer,
         responses={
             201: openapi.Response(
                 description="Contract worker created successfully",
@@ -671,7 +667,6 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         Returns the updated contract worker with all details.
         """,
         tags=['Contract Worker Management'],
-        request_body=ContractWorkerCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Contract worker updated successfully",
@@ -698,7 +693,6 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Contract Worker Management'],
-        request_body=ContractWorkerCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Contract worker partially updated successfully",
@@ -789,7 +783,6 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         ```
         """,
         tags=['Contract Worker Management'],
-        request_body=BulkUploadContractWorkerSerializer,
         responses={
             200: openapi.Response(
                 description="Bulk upload completed",
@@ -1427,7 +1420,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Returns the created or updated attendance record.
         """,
         tags=['Attendance Management'],
-        request_body=AttendanceCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Attendance record updated successfully",
@@ -1466,7 +1458,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Returns the updated attendance record.
         """,
         tags=['Attendance Management'],
-        request_body=AttendanceCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Attendance record updated successfully",
@@ -1493,7 +1484,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Attendance Management'],
-        request_body=AttendanceCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Attendance record partially updated successfully",
@@ -1561,7 +1551,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Use this endpoint when users select multiple attendance records and click "Approve" or "Reject" button to process them all at once.
         """,
         tags=['Attendance Management'],
-        request_body=BulkApproveAttendanceSerializer,
         responses={
             200: openapi.Response(
                 description="Attendance records updated successfully",
@@ -1701,7 +1690,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Use this endpoint when an employee clicks "Punch In" button in the mobile app after capturing their selfie and location.
         """,
         tags=['Attendance Management'],
-        request_body=AttendancePunchInSerializer,
         responses={
             201: openapi.Response(
                 description="Attendance punched in successfully",
@@ -1792,7 +1780,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         Use this endpoint when an employee clicks "Punch Out" button in the mobile app after capturing their location.
         """,
         tags=['Attendance Management'],
-        request_body=AttendancePunchOutSerializer,
         responses={
             200: openapi.Response(
                 description="Attendance punched out successfully",
@@ -2166,7 +2153,6 @@ class PayrollViewSet(viewsets.ModelViewSet):
         Returns the created or updated payroll record.
         """,
         tags=['Payroll Management'],
-        request_body=PayrollCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Payroll record updated successfully",
@@ -2206,7 +2192,6 @@ class PayrollViewSet(viewsets.ModelViewSet):
         Returns the updated payroll record.
         """,
         tags=['Payroll Management'],
-        request_body=PayrollCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Payroll record updated successfully",
@@ -2235,7 +2220,6 @@ class PayrollViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Payroll Management'],
-        request_body=PayrollCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Payroll record partially updated successfully",
@@ -2289,7 +2273,6 @@ class PayrollViewSet(viewsets.ModelViewSet):
         Returns the updated payroll record with payment details.
         """,
         tags=['Payroll Management'],
-        request_body=PayrollMarkPaidSerializer,
         responses={
             200: openapi.Response(
                 description="Payroll record marked as paid successfully",
@@ -2378,7 +2361,6 @@ class PayrollViewSet(viewsets.ModelViewSet):
         Use this endpoint when users select multiple payroll records and click "Mark as Paid" button to process them all at once with the same payment details.
         """,
         tags=['Payroll Management'],
-        request_body=BulkMarkPayrollPaidSerializer,
         responses={
             200: openapi.Response(
                 description="Payroll records marked as paid successfully",

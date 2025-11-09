@@ -238,7 +238,6 @@ class StockViewSet(viewsets.ModelViewSet):
         Returns the updated stock item with all details.
         """,
         tags=['Stock Dashboard'],
-        request_body=StockUpdateSerializer,
         responses={
             200: openapi.Response(
                 description="Stock item updated successfully",
@@ -266,7 +265,6 @@ class StockViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Stock Dashboard'],
-        request_body=StockUpdateSerializer,
         responses={
             200: openapi.Response(
                 description="Stock item partially updated successfully",

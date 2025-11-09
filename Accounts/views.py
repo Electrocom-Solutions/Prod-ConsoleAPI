@@ -324,7 +324,6 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
         Returns the number of records created/updated and any errors encountered.
         """,
         tags=['Payment Tracking'],
-        request_body=PaymentTrackerUploadSerializer,
         responses={
             200: openapi.Response(
                 description="Excel file processed successfully",
@@ -498,7 +497,6 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
         Returns the updated payment tracker record with payment details.
         """,
         tags=['Payment Tracking'],
-        request_body=PaymentTrackerMarkPaidSerializer,
         responses={
             200: openapi.Response(
                 description="Payment tracker record marked as paid successfully",
@@ -572,7 +570,6 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
         Use this endpoint when users select multiple payment tracker records and click "Mark as Paid" button to process them all at once with the same payment details.
         """,
         tags=['Payment Tracking'],
-        request_body=BulkMarkPaymentPaidSerializer,
         responses={
             200: openapi.Response(
                 description="Payment tracker records marked as paid successfully",
@@ -845,7 +842,6 @@ class BankAccountViewSet(viewsets.ModelViewSet):
         Returns the updated bank account.
         """,
         tags=['Bank Account Dashboard'],
-        request_body=BankAccountCreateUpdateSerializer,
         responses={
             200: openapi.Response(
                 description="Bank account updated successfully",
@@ -869,7 +865,6 @@ class BankAccountViewSet(viewsets.ModelViewSet):
         Partially update a bank account's information. Only provided fields will be updated.
         """,
         tags=['Bank Account Dashboard'],
-        request_body=BankAccountCreateUpdateSerializer,
         responses={
             200: openapi.Response(
                 description="Bank account partially updated successfully",

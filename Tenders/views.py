@@ -208,7 +208,6 @@ class TenderViewSet(viewsets.ModelViewSet):
         Returns the created tender with all details.
         """,
         tags=['Tender Management'],
-        request_body=TenderCreateSerializer,
         responses={
             201: openapi.Response(
                 description="Tender created successfully",
@@ -238,7 +237,6 @@ class TenderViewSet(viewsets.ModelViewSet):
         Returns the updated tender with all details.
         """,
         tags=['Tender Management'],
-        request_body=TenderCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Tender updated successfully",
@@ -265,7 +263,6 @@ class TenderViewSet(viewsets.ModelViewSet):
         Use this endpoint when you only want to update specific fields without affecting others.
         """,
         tags=['Tender Management'],
-        request_body=TenderCreateSerializer,
         responses={
             200: openapi.Response(
                 description="Tender partially updated successfully",
@@ -409,7 +406,6 @@ class TenderViewSet(viewsets.ModelViewSet):
         Returns the created document record with file URL.
         """,
         tags=['Tender Management'],
-        request_body=TenderDocumentUploadSerializer,
         responses={
             201: openapi.Response(
                 description="Document attached successfully",

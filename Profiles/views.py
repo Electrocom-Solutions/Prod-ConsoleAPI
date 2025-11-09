@@ -103,7 +103,6 @@ def get_current_user_profile(request):
     - Use multipart/form-data for file uploads
     """,
     tags=['Profile'],
-    request_body=CurrentUserProfileUpdateSerializer,
     responses={
         200: openapi.Response(
             description="Profile updated successfully",
@@ -131,8 +130,8 @@ def get_current_user_profile(request):
 )
 @swagger_auto_schema(
     method='patch',
-    operation_id='update_current_user_profile',
-    operation_summary="Update Current User Profile",
+    operation_id='update_current_user_profile_patch',
+    operation_summary="Update Current User Profile (PATCH)",
     operation_description="""
     Update the current authenticated user's profile information.
     
@@ -164,7 +163,6 @@ def get_current_user_profile(request):
     - Use multipart/form-data for file uploads
     """,
     tags=['Profile'],
-    request_body=CurrentUserProfileUpdateSerializer,
     responses={
         200: openapi.Response(
             description="Profile updated successfully",
