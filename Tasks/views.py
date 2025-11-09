@@ -1329,7 +1329,9 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
                     type=openapi.TYPE_OBJECT,
                     properties={
                         'total_tasks': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total number of tasks with resources'),
-                        'total_cost': openapi.Schema(type=openapi.TYPE_NUMBER, description='Total cost of all resources used in tasks')
+                        'total_resources': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total count of resources across all tasks'),
+                        'total_cost': openapi.Schema(type=openapi.TYPE_NUMBER, description='Total cost of all resources used in tasks'),
+                        'avg_cost_per_task': openapi.Schema(type=openapi.TYPE_NUMBER, description='Average cost per task')
                     }
                 )
             )
@@ -1363,19 +1365,28 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
         # Total tasks with resources
         total_tasks = len(task_ids)
         
-        # Total cost of all resources
+        # Total resources count and total cost
         if task_ids:
-            total_cost = TaskResource.objects.filter(
+            resource_stats = TaskResource.objects.filter(
                 task_id__in=task_ids
             ).aggregate(
-                total=Coalesce(Sum('total_cost'), 0)
-            )['total'] or 0
+                total_count=Count('id'),
+                total_cost=Coalesce(Sum('total_cost'), 0)
+            )
+            total_resources = resource_stats['total_count'] or 0
+            total_cost = resource_stats['total_cost'] or 0
         else:
+            total_resources = 0
             total_cost = 0
+        
+        # Calculate average cost per task
+        avg_cost_per_task = float(total_cost) / total_tasks if total_tasks > 0 else 0
         
         data = {
             'total_tasks': total_tasks,
-            'total_cost': float(total_cost)
+            'total_resources': total_resources,
+            'total_cost': float(total_cost),
+            'avg_cost_per_task': avg_cost_per_task
         }
         
         serializer = TaskResourcesStatisticsSerializer(data)

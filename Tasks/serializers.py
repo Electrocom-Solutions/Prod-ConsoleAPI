@@ -262,5 +262,7 @@ class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
 class TaskResourcesStatisticsSerializer(serializers.Serializer):
     """Serializer for task resources dashboard statistics"""
     total_tasks = serializers.IntegerField()
+    total_resources = serializers.IntegerField()
     total_cost = serializers.DecimalField(max_digits=15, decimal_places=2)
+    avg_cost_per_task = serializers.DecimalField(max_digits=15, decimal_places=2)
 
