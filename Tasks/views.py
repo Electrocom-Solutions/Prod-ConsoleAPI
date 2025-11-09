@@ -777,38 +777,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
     
     @swagger_auto_schema(
-        operation_id='task_delete_document',
-        operation_summary="Delete Document from Task",
-        operation_description="""
-        Delete a document attached to a task. This action is permanent and cannot be undone.
-        
-        **What it does:**
-        - Validates that the document belongs to the specified task
-        - Deletes the document from the TaskAttachment table
-        - Creates an activity log entry
-        
-        **Path Parameters:**
-        - task_id: ID of the task
-        - document_id: ID of the document to delete
-        
-        **Response:**
-        Returns success message upon deletion.
-        """,
-        tags=['Task Management'],
-        responses={
-            200: openapi.Response(
-                description="Document deleted successfully",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message')
-                    }
-                )
-            ),
-            404: openapi.Response(description="Document not found")
-        }
-    )
-    @swagger_auto_schema(
         operation_id='task_download_document',
         operation_summary="Download Task Document",
         operation_description="""
@@ -861,6 +829,38 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @swagger_auto_schema(
+        operation_id='task_delete_document',
+        operation_summary="Delete Document from Task",
+        operation_description="""
+        Delete a document attached to a task. This action is permanent and cannot be undone.
+        
+        **What it does:**
+        - Validates that the document belongs to the specified task
+        - Deletes the document from the TaskAttachment table
+        - Creates an activity log entry
+        
+        **Path Parameters:**
+        - task_id: ID of the task
+        - document_id: ID of the document to delete
+        
+        **Response:**
+        Returns success message upon deletion.
+        """,
+        tags=['Task Management'],
+        responses={
+            200: openapi.Response(
+                description="Document deleted successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message')
+                    }
+                )
+            ),
+            404: openapi.Response(description="Document not found")
+        }
+    )
     @action(detail=True, methods=['delete'], url_path='delete-document/(?P<document_id>[0-9]+)')
     def delete_document(self, request, pk=None, document_id=None):
         """Delete a document from a task"""
