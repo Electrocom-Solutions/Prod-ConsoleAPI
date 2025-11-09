@@ -469,11 +469,12 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
         """Return email templates with search functionality"""
         queryset = super().get_queryset()
         
-        # Search by template name
+        # Search by template name or subject
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
-                Q(name__icontains=search)
+                Q(name__icontains=search) |
+                Q(subject__icontains=search)
             )
         
         return queryset.order_by('-created_at')
@@ -488,10 +489,10 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
         - List of email templates with basic information (name, subject, created date)
         
         **Search Options:**
-        - search: Search by template name (case-insensitive partial match)
+        - search: Search by template name or subject (case-insensitive partial match)
         
         **Query Parameters:**
-        - search (optional): Search by template name
+        - search (optional): Search by template name or subject
         
         **Pagination:**
         Results are paginated (20 items per page by default) and sorted by creation date (newest first).
