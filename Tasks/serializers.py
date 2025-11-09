@@ -1,0 +1,266 @@
+from rest_framework import serializers
+from .models import Task, TaskAttachment, TaskResource
+from Analytics.models import ActivityLog
+
+
+class TaskAttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    file_name = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = TaskAttachment
+        fields = [
+            'id', 'file', 'file_url', 'file_name', 'notes', 'created_at', 'created_by', 'created_by_username'
+        ]
+        read_only_fields = ['id', 'created_at', 'created_by']
+    
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+    
+    def get_file_name(self, obj):
+        if obj.file:
+            return obj.file.name.split('/')[-1]
+        return None
+
+
+class TaskResourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskResource
+        fields = [
+            'id', 'resource_name', 'quantity', 'unit_cost', 'total_cost', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class ActivityFeedSerializer(serializers.ModelSerializer):
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = ActivityLog
+        fields = [
+            'id', 'entity_type', 'entity_id', 'action', 'description',
+            'created_at', 'created_by', 'created_by_username'
+        ]
+        read_only_fields = ['id', 'entity_type', 'entity_id', 'action', 'description', 'created_at', 'created_by']
+
+
+class TaskListSerializer(serializers.ModelSerializer):
+    employee_name = serializers.SerializerMethodField()
+    project_name = serializers.CharField(source='project.name', read_only=True)
+    client_name = serializers.CharField(source='project.client.full_name', read_only=True)
+    time_taken_hours = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'task_name', 'task_date', 'location', 'time_taken_minutes',
+            'time_taken_hours', 'status', 'employee', 'employee_name',
+            'project', 'project_name', 'client_name', 'created_at'
+        ]
+        read_only_fields = ['created_at']
+    
+    def get_employee_name(self, obj):
+        """Get employee name from profile user"""
+        if obj.employee and obj.employee.profile and obj.employee.profile.user:
+            user = obj.employee.profile.user
+            full_name = f"{user.first_name} {user.last_name}".strip()
+            return full_name if full_name else user.username
+        return None
+    
+    def get_time_taken_hours(self, obj):
+        """Convert minutes to hours"""
+        if obj.time_taken_minutes:
+            return round(obj.time_taken_minutes / 60.0, 2)
+        return 0.0
+
+
+class TaskDetailSerializer(serializers.ModelSerializer):
+    employee_name = serializers.SerializerMethodField()
+    project_name = serializers.CharField(source='project.name', read_only=True)
+    client_name = serializers.CharField(source='project.client.full_name', read_only=True)
+    time_taken_hours = serializers.SerializerMethodField()
+    attachments = TaskAttachmentSerializer(many=True, read_only=True)
+    resources = TaskResourceSerializer(many=True, read_only=True)
+    activity_feed = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    updated_by_username = serializers.CharField(source='updated_by.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'task_name', 'task_description', 'task_date', 'location',
+            'time_taken_minutes', 'time_taken_hours', 'status', 'internal_notes',
+            'employee', 'employee_name', 'project', 'project_name', 'client_name',
+            'attachments', 'resources', 'activity_feed',
+            'created_at', 'updated_at', 'created_by', 'created_by_username',
+            'updated_by', 'updated_by_username'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
+    
+    def get_employee_name(self, obj):
+        """Get employee name from profile user"""
+        if obj.employee and obj.employee.profile and obj.employee.profile.user:
+            user = obj.employee.profile.user
+            full_name = f"{user.first_name} {user.last_name}".strip()
+            return full_name if full_name else user.username
+        return None
+    
+    def get_time_taken_hours(self, obj):
+        """Convert minutes to hours"""
+        if obj.time_taken_minutes:
+            return round(obj.time_taken_minutes / 60.0, 2)
+        return 0.0
+    
+    def get_activity_feed(self, obj):
+        """Get activity feed for this task"""
+        activities = ActivityLog.objects.filter(
+            entity_type=ActivityLog.EntityType.TASK,
+            entity_id=obj.id
+        ).select_related('created_by').order_by('-created_at')
+        return ActivityFeedSerializer(activities, many=True, context=self.context).data
+
+
+class TaskStatisticsSerializer(serializers.Serializer):
+    total_tasks = serializers.IntegerField()
+    pending_approval = serializers.IntegerField()
+    approved_tasks = serializers.IntegerField()
+    total_timings = serializers.DecimalField(max_digits=10, decimal_places=2, help_text="Total time in hours")
+    total_resource_cost = serializers.DecimalField(max_digits=15, decimal_places=2, help_text="Total resource cost")
+
+
+class BulkApproveSerializer(serializers.Serializer):
+    task_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True,
+        min_length=1,
+        help_text='List of task IDs to approve'
+    )
+
+
+class TaskCreateSerializer(serializers.ModelSerializer):
+    estimated_time = serializers.IntegerField(source='time_taken_minutes', required=False, allow_null=True, help_text='Estimated time in minutes')
+    deadline = serializers.DateField(source='task_date', help_text='Task deadline/date')
+    
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'employee', 'project', 'deadline', 'task_name', 'status',
+            'estimated_time', 'location', 'task_description'
+        ]
+        read_only_fields = ['id']
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['created_by'] = user if user.is_authenticated else None
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+        validated_data['updated_by'] = user if user.is_authenticated else None
+        return super().update(instance, validated_data)
+
+
+class TaskAttachmentUploadSerializer(serializers.Serializer):
+    file = serializers.FileField(required=True)
+    notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class TaskResourceCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskResource
+        fields = [
+            'id', 'resource_name', 'quantity', 'unit_cost', 'total_cost'
+        ]
+        read_only_fields = ['id']
+    
+    def validate(self, data):
+        """Calculate total_cost if not provided"""
+        quantity = data.get('quantity', 0)
+        unit_cost = data.get('unit_cost', 0)
+        
+        if 'total_cost' not in data or data['total_cost'] is None:
+            data['total_cost'] = float(quantity) * float(unit_cost)
+        
+        return data
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['task'] = self.context['task']
+        validated_data['created_by'] = user if user.is_authenticated else None
+        return super().create(validated_data)
+
+
+# Task Resources Dashboard Serializers
+class TaskResourceBreakdownSerializer(serializers.ModelSerializer):
+    """Serializer for resource breakdown in task resources dashboard"""
+    class Meta:
+        model = TaskResource
+        fields = [
+            'id', 'resource_name', 'quantity', 'unit_cost', 'total_cost'
+        ]
+        read_only_fields = ['id']
+
+
+class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
+    """Serializer for task resources dashboard list"""
+    employee_name = serializers.SerializerMethodField()
+    project_name = serializers.CharField(source='project.name', read_only=True)
+    client_name = serializers.SerializerMethodField()
+    resources_count = serializers.SerializerMethodField()
+    grand_total = serializers.SerializerMethodField()
+    resource_breakdown = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'task_name', 'employee', 'employee_name', 'project', 'project_name',
+            'client_name', 'task_date', 'resources_count', 'grand_total', 'resource_breakdown'
+        ]
+        read_only_fields = ['id']
+    
+    def get_employee_name(self, obj):
+        """Get employee name from profile user"""
+        if obj.employee and obj.employee.profile and obj.employee.profile.user:
+            user = obj.employee.profile.user
+            full_name = f"{user.first_name} {user.last_name}".strip()
+            return full_name if full_name else user.username
+        return None
+    
+    def get_client_name(self, obj):
+        """Get client name"""
+        if obj.project and obj.project.client:
+            client = obj.project.client
+            full_name = f"{client.first_name} {client.last_name}".strip()
+            return full_name if full_name else client.name or f"Client {client.id}"
+        return None
+    
+    def get_resources_count(self, obj):
+        """Get number of resources used in this task"""
+        return obj.resources.count()
+    
+    def get_grand_total(self, obj):
+        """Get grand total of all resources in this task"""
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+        total = obj.resources.aggregate(
+            total=Coalesce(Sum('total_cost'), 0)
+        )['total'] or 0
+        return float(total)
+    
+    def get_resource_breakdown(self, obj):
+        """Get resource breakdown for this task"""
+        resources = obj.resources.all()
+        return TaskResourceBreakdownSerializer(resources, many=True).data
+
+
+class TaskResourcesStatisticsSerializer(serializers.Serializer):
+    """Serializer for task resources dashboard statistics"""
+    total_tasks = serializers.IntegerField()
+    total_cost = serializers.DecimalField(max_digits=15, decimal_places=2)
+

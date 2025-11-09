@@ -1,0 +1,245 @@
+"""
+Views for Inventory app - Stock Dashboard.
+"""
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.db.models import Q
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+from .models import Stock
+from .serializers import (
+    StockListSerializer,
+    StockDetailSerializer,
+    StockCreateSerializer,
+    StockUpdateSerializer
+)
+
+
+class StockViewSet(viewsets.ModelViewSet):
+    """
+    Stock Dashboard APIs
+    """
+    queryset = Stock.objects.select_related('created_by', 'updated_by').all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    
+    def get_serializer_class(self):
+        if self.action in ['list']:
+            return StockListSerializer
+        elif self.action in ['retrieve']:
+            return StockDetailSerializer
+        elif self.action in ['create']:
+            return StockCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return StockUpdateSerializer
+        return StockListSerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Search by name
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        
+        return queryset.order_by('-created_at')
+    
+    @swagger_auto_schema(
+        operation_id='stock_list',
+        operation_summary="List All Stock Items",
+        operation_description="""
+        Retrieve a list of all stock items with search functionality.
+        
+        **What it returns:**
+        - List of stock items with basic information:
+          * Resource Name (name)
+          * Unit of Measure (unit_of_measure)
+          * Stock Count (quantity)
+          * Unit Price (price)
+          * Description
+          * Creation and update timestamps
+        
+        **Search Options:**
+        - search: Search by stock item name (case-insensitive partial match)
+        
+        **Query Parameters:**
+        - search (optional): Search by stock item name
+        
+        **Pagination:**
+        Results are paginated (20 items per page by default) and sorted by creation date (newest first).
+        """,
+        tags=['Stock Dashboard'],
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description='Search by stock item name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of stock items",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                        )
+                    }
+                )
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        """List all stock items with search"""
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='stock_retrieve',
+        operation_summary="Get Stock Item Details",
+        operation_description="""
+        Retrieve detailed information about a specific stock item.
+        
+        **What it returns:**
+        - Complete stock item information including all fields
+        - Created and updated by user information
+        - Creation and update timestamps
+        """,
+        tags=['Stock Dashboard'],
+        responses={
+            200: StockDetailSerializer()
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """Get stock item details"""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='stock_create',
+        operation_summary="Add Stock Item",
+        operation_description="""
+        Add a new stock item to the inventory.
+        
+        **Required Fields:**
+        - name: Resource Name
+        - unit_of_measure: Unit of Measure (e.g., "kg", "pieces", "liters")
+        - quantity: Stock Count (current quantity in stock)
+        - price: Unit Price (price per unit)
+        
+        **Optional Fields:**
+        - description: Description of the stock item
+        
+        **Response:**
+        Returns the created stock item with all details.
+        """,
+        tags=['Stock Dashboard'],
+        request_body=StockCreateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Stock item created successfully",
+                schema=StockCreateSerializer()
+            ),
+            400: openapi.Response(
+                description="Invalid request data",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        """Add a new stock item"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    @swagger_auto_schema(
+        operation_id='stock_update',
+        operation_summary="Edit Stock Item",
+        operation_description="""
+        Update an existing stock item. All fields are optional - only provided fields will be updated.
+        
+        **Fields:**
+        - name: Resource Name
+        - unit_of_measure: Unit of Measure
+        - quantity: Stock Count
+        - price: Unit Price
+        - description: Description
+        
+        **Response:**
+        Returns the updated stock item with all details.
+        """,
+        tags=['Stock Dashboard'],
+        request_body=StockUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Stock item updated successfully",
+                schema=StockUpdateSerializer()
+            ),
+            404: openapi.Response(description="Stock item not found")
+        }
+    )
+    def update(self, request, *args, **kwargs):
+        """Update stock item information"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+    @swagger_auto_schema(
+        operation_id='stock_partial_update',
+        operation_summary="Partial Update Stock Item",
+        operation_description="""
+        Partially update a stock item. Only provided fields will be updated.
+        
+        **Use Case:**
+        Use this endpoint when you only want to update specific fields without affecting others.
+        """,
+        tags=['Stock Dashboard'],
+        request_body=StockUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Stock item partially updated successfully",
+                schema=StockUpdateSerializer()
+            )
+        }
+    )
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update stock item information"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='stock_delete',
+        operation_summary="Delete Stock Item",
+        operation_description="""
+        Delete a stock item from the inventory. This action is permanent and cannot be undone.
+        
+        **Warning:**
+        Deleting a stock item will permanently remove it from the system.
+        
+        **Use Case:**
+        Use this endpoint when you need to permanently remove a stock item from the inventory.
+        """,
+        tags=['Stock Dashboard'],
+        responses={
+            204: openapi.Response(description="Stock item deleted successfully"),
+            404: openapi.Response(description="Stock item not found")
+        }
+    )
+    def destroy(self, request, *args, **kwargs):
+        """Delete a stock item"""
+        return super().destroy(request, *args, **kwargs)

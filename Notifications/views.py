@@ -1,0 +1,667 @@
+"""
+Views for Notifications app.
+"""
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
+from django.utils import timezone
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+from .models import Notification, EmailTemplate
+from .serializers import (
+    NotificationListSerializer,
+    NotificationDetailSerializer,
+    NotificationMarkReadSerializer,
+    BulkMarkReadSerializer,
+    NotificationCreateSerializer,
+    EmailTemplateListSerializer,
+    EmailTemplateDetailSerializer,
+    EmailTemplateCreateUpdateSerializer,
+    EmailTemplateSendSerializer
+)
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    Notification Management APIs
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return notifications for the current user only"""
+        if not self.request.user.is_authenticated:
+            # During schema generation, return empty queryset
+            return Notification.objects.none()
+        return Notification.objects.filter(
+            recipient=self.request.user
+        ).select_related('created_by', 'recipient').order_by('-created_at')
+    
+    def get_serializer_class(self):
+        if self.action in ['list']:
+            return NotificationListSerializer
+        elif self.action in ['retrieve']:
+            return NotificationDetailSerializer
+        elif self.action in ['create']:
+            return NotificationCreateSerializer
+        elif self.action in ['mark_read']:
+            return NotificationMarkReadSerializer
+        elif self.action in ['bulk_mark_read']:
+            return BulkMarkReadSerializer
+        return NotificationListSerializer
+    
+    @swagger_auto_schema(
+        operation_id='notification_list',
+        operation_summary="Get All Notifications for Current User",
+        operation_description="""
+        Retrieve all notifications for the currently authenticated user.
+        
+        **What it returns:**
+        - List of all notifications for the current user
+        - Includes read/unread status
+        - Includes scheduled and sent timestamps if applicable
+        - Sorted by creation date (newest first)
+        
+        **Note:**
+        Only notifications for the authenticated user are returned.
+        
+        **Pagination:**
+        Results are paginated (20 items per page by default) and sorted by creation date (newest first).
+        """,
+        tags=['Notifications'],
+        responses={
+            200: openapi.Response(
+                description="List of notifications",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                        )
+                    }
+                )
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        """Get all notifications for the current user"""
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='notification_retrieve',
+        operation_summary="Get Notification Details",
+        operation_description="""
+        Retrieve detailed information about a specific notification.
+        
+        **Note:**
+        Users can only retrieve their own notifications.
+        """,
+        tags=['Notifications'],
+        responses={
+            200: NotificationDetailSerializer(),
+            404: openapi.Response(description="Notification not found")
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """Get notification details"""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='notification_create',
+        operation_summary="Create Notification for All Employees (Owner Only)",
+        operation_description="""
+        Create a notification that will be sent to all employees. Only superadmins (owners) can use this endpoint.
+        
+        **Required Fields:**
+        - title: Notification title
+        - message: Notification message
+        - type: Notification type (Task, AMC, Tender, Payroll, System, Other)
+        
+        **Optional Fields:**
+        - channel: Notification channel (In-App, Email, Push) - default: In-App
+        - scheduled_at: Schedule notification for a specific date and time (YYYY-MM-DD HH:MM:SS format)
+          * If not provided, notification is sent immediately
+          * If provided and in the future, notification will be scheduled for that time
+          * If provided and in the past, notification is sent immediately
+        
+        **Behavior:**
+        - Creates a notification for each employee (user linked to Employee model)
+        - If scheduled_at is provided and in the future, notifications are created but not sent yet
+        - If scheduled_at is not provided or in the past, notifications are sent immediately
+        
+        **Response:**
+        Returns the first notification created (as a sample). All employee notifications are created in the background.
+        """,
+        tags=['Notifications'],
+        request_body=NotificationCreateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Notification created successfully",
+                schema=NotificationCreateSerializer()
+            ),
+            403: openapi.Response(description="Only superadmins can create notifications for employees")
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        """Create notification for all employees (owner only)"""
+        # Check if user is superadmin
+        if not request.user.is_superuser:
+            return Response(
+                {'error': 'Only superadmins (owners) can create notifications for employees'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notification = serializer.save()
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    @swagger_auto_schema(
+        operation_id='notification_mark_read',
+        operation_summary="Mark Notification as Read",
+        operation_description="""
+        Mark a single notification as read.
+        
+        **What it does:**
+        - Updates the notification's is_read status to True
+        - Returns the updated notification
+        
+        **Note:**
+        Users can only mark their own notifications as read.
+        
+        **Response:**
+        Returns the updated notification with is_read=True.
+        """,
+        tags=['Notifications'],
+        responses={
+            200: openapi.Response(
+                description="Notification marked as read successfully",
+                schema=NotificationDetailSerializer()
+            ),
+            404: openapi.Response(description="Notification not found")
+        }
+    )
+    @action(detail=True, methods=['post'], url_path='mark-read')
+    def mark_read(self, request, pk=None):
+        """Mark a notification as read"""
+        notification = self.get_object()
+        
+        # Ensure user can only mark their own notifications
+        if notification.recipient != request.user:
+            return Response(
+                {'error': 'You can only mark your own notifications as read'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        notification.is_read = True
+        notification.save()
+        
+        serializer = NotificationDetailSerializer(notification, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        operation_id='notification_bulk_mark_read',
+        operation_summary="Bulk Mark Notifications as Read",
+        operation_description="""
+        Mark multiple notifications as read in bulk.
+        
+        **What it does:**
+        - Accepts a list of notification IDs OR a mark_all flag
+        - Updates all selected notifications' is_read status to True
+        - Returns the number of notifications updated
+        
+        **Request Body Options:**
+        
+        Option 1: Mark specific notifications
+        ```json
+        {
+          "notification_ids": [1, 2, 3, 4, 5],
+          "mark_all": false
+        }
+        ```
+        
+        Option 2: Mark all notifications for current user
+        ```json
+        {
+          "mark_all": true
+        }
+        ```
+        
+        **Required Fields:**
+        - Either notification_ids (list) OR mark_all (boolean) must be provided
+        
+        **Validation:**
+        - Users can only mark their own notifications as read
+        - Invalid notification IDs are skipped
+        
+        **Response:**
+        Returns the number of notifications marked as read and any errors encountered.
+        """,
+        tags=['Notifications'],
+        request_body=BulkMarkReadSerializer,
+        responses={
+            200: openapi.Response(
+                description="Notifications marked as read successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'marked_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of notifications marked as read'),
+                        'skipped_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of notifications skipped (not found or not owned by user)'),
+                        'errors': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_STRING),
+                            description='List of errors encountered'
+                        )
+                    }
+                )
+            ),
+            400: openapi.Response(
+                description="Invalid request data",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=False, methods=['post'], url_path='bulk-mark-read')
+    def bulk_mark_read(self, request):
+        """Mark multiple notifications as read"""
+        serializer = BulkMarkReadSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        mark_all = serializer.validated_data.get('mark_all', False)
+        notification_ids = serializer.validated_data.get('notification_ids', [])
+        
+        if mark_all:
+            # Mark all notifications for current user as read
+            updated_count = Notification.objects.filter(
+                recipient=request.user,
+                is_read=False
+            ).update(is_read=True)
+            
+            return Response({
+                'marked_count': updated_count,
+                'skipped_count': 0,
+                'errors': None
+            }, status=status.HTTP_200_OK)
+        
+        elif notification_ids:
+            # Mark specific notifications as read
+            notifications = Notification.objects.filter(
+                id__in=notification_ids,
+                recipient=request.user  # Ensure user can only mark their own notifications
+            )
+            
+            marked_count = notifications.update(is_read=True)
+            skipped_count = len(notification_ids) - marked_count
+            
+            return Response({
+                'marked_count': marked_count,
+                'skipped_count': skipped_count,
+                'errors': None if skipped_count == 0 else [f'Skipped {skipped_count} notification(s) that were not found or not owned by you']
+            }, status=status.HTTP_200_OK)
+        
+        else:
+            return Response(
+                {'error': 'Either notification_ids or mark_all must be provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class EmailTemplateViewSet(viewsets.ModelViewSet):
+    """
+    Email Template Management APIs
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = EmailTemplate.objects.select_related('created_by', 'updated_by').all()
+    
+    def get_serializer_class(self):
+        if self.action in ['list']:
+            return EmailTemplateListSerializer
+        elif self.action in ['retrieve']:
+            return EmailTemplateDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return EmailTemplateCreateUpdateSerializer
+        elif self.action in ['send_email']:
+            return EmailTemplateSendSerializer
+        return EmailTemplateListSerializer
+    
+    def get_queryset(self):
+        """Return email templates with search functionality"""
+        queryset = super().get_queryset()
+        
+        # Search by template name
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search)
+            )
+        
+        return queryset.order_by('-created_at')
+    
+    @swagger_auto_schema(
+        operation_id='email_template_list',
+        operation_summary="Get All Email Templates",
+        operation_description="""
+        Retrieve a list of all email templates with search functionality.
+        
+        **What it returns:**
+        - List of email templates with basic information (name, subject, created date)
+        
+        **Search Options:**
+        - search: Search by template name (case-insensitive partial match)
+        
+        **Query Parameters:**
+        - search (optional): Search by template name
+        
+        **Pagination:**
+        Results are paginated (20 items per page by default) and sorted by creation date (newest first).
+        """,
+        tags=['Email Template Dashboard'],
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description='Search by template name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of email templates",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                        )
+                    }
+                )
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        """Get all email templates with search"""
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='email_template_retrieve',
+        operation_summary="Get Email Template Details",
+        operation_description="""
+        Retrieve detailed information about a specific email template.
+        
+        **What it returns:**
+        - Complete template information including name, subject, body (HTML), and placeholders
+        """,
+        tags=['Email Template Dashboard'],
+        responses={
+            200: EmailTemplateDetailSerializer(),
+            404: openapi.Response(description="Email template not found")
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """Get email template details"""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='email_template_create',
+        operation_summary="Create Email Template",
+        operation_description="""
+        Create a new email template.
+        
+        **Required Fields:**
+        - name: Template Name
+        - subject: Email Subject
+        - body: Email Body (HTML)
+        
+        **Optional Fields:**
+        - placeholders: Documentation of placeholders used in the template (e.g., "{{name}}, {{date}}")
+        
+        **Placeholders:**
+        - Placeholders in the HTML body should be enclosed in double curly braces: {{placeholder_name}}
+        - Example: "Hello {{name}}, your appointment is on {{date}}"
+        - When sending emails, provide placeholder_values to replace these placeholders
+        
+        **Response:**
+        Returns the created email template.
+        """,
+        tags=['Email Template Dashboard'],
+        request_body=EmailTemplateCreateUpdateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Email template created successfully",
+                schema=EmailTemplateCreateUpdateSerializer()
+            )
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        """Create a new email template"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    @swagger_auto_schema(
+        operation_id='email_template_update',
+        operation_summary="Update Email Template",
+        operation_description="""
+        Update an existing email template. All fields are optional - only provided fields will be updated.
+        
+        **Fields:**
+        Same as create endpoint - all fields are optional for update.
+        
+        **Response:**
+        Returns the updated email template.
+        """,
+        tags=['Email Template Dashboard'],
+        request_body=EmailTemplateCreateUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Email template updated successfully",
+                schema=EmailTemplateCreateUpdateSerializer()
+            )
+        }
+    )
+    def update(self, request, *args, **kwargs):
+        """Update email template information"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+    @swagger_auto_schema(
+        operation_id='email_template_partial_update',
+        operation_summary="Partial Update Email Template",
+        operation_description="""
+        Partially update an email template's information. Only provided fields will be updated.
+        """,
+        tags=['Email Template Dashboard'],
+        request_body=EmailTemplateCreateUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Email template partially updated successfully",
+                schema=EmailTemplateCreateUpdateSerializer()
+            )
+        }
+    )
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update email template information"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='email_template_delete',
+        operation_summary="Delete Email Template",
+        operation_description="""
+        Delete an email template from the system. This action is permanent and cannot be undone.
+        """,
+        tags=['Email Template Dashboard'],
+        responses={
+            204: openapi.Response(description="Email template deleted successfully"),
+            404: openapi.Response(description="Email template not found")
+        }
+    )
+    def destroy(self, request, *args, **kwargs):
+        """Delete an email template"""
+        return super().destroy(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='email_template_send',
+        operation_summary="Send Email Using Template",
+        operation_description="""
+        Send an email using the template to specified recipients.
+        
+        **Request Body:**
+        - recipients: Comma-separated email addresses (e.g., "user1@example.com, user2@example.com")
+        - scheduled_at (optional): Schedule email for a specific date and time (YYYY-MM-DD HH:MM:SS format)
+          * If not provided, email is sent immediately
+          * If provided and in the future, email will be scheduled for that time
+          * If provided and in the past, email is sent immediately
+        - placeholder_values (optional): Dictionary of placeholder values to replace in the email body
+          * Example: {"name": "John", "date": "2025-01-01"}
+          * These values will replace {{name}} and {{date}} in the email body
+        
+        **Behavior:**
+        - Replaces placeholders in the email body with provided values
+        - If scheduled_at is provided and in the future, email is scheduled for that time
+        - If scheduled_at is not provided or in the past, email is sent immediately
+        
+        **Response:**
+        Returns a summary of the email sending operation, including number of emails sent/scheduled.
+        """,
+        tags=['Email Template Dashboard'],
+        request_body=EmailTemplateSendSerializer,
+        responses={
+            200: openapi.Response(
+                description="Email sent/scheduled successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'status': openapi.Schema(type=openapi.TYPE_STRING, description='Status: "sent" or "scheduled"'),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                        'recipients_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of recipients'),
+                        'scheduled_at': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME, description='Scheduled time if scheduled', nullable=True),
+                        'sent_at': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME, description='Sent time if sent immediately', nullable=True)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid request data"),
+            404: openapi.Response(description="Email template not found")
+        }
+    )
+    @action(detail=True, methods=['post'], url_path='send')
+    def send_email(self, request, pk=None):
+        """Send email using template"""
+        from django.core.mail import send_mail
+        from django.conf import settings
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        template = self.get_object()
+        serializer = EmailTemplateSendSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        recipients = serializer.validated_data['recipients']
+        scheduled_at = serializer.validated_data.get('scheduled_at', None)
+        placeholder_values = serializer.validated_data.get('placeholder_values', {})
+        
+        # Replace placeholders in subject and body
+        subject = template.subject
+        body = template.body
+        
+        # Replace placeholders with values
+        for key, value in placeholder_values.items():
+            placeholder = f"{{{{{key}}}}}"
+            subject = subject.replace(placeholder, str(value))
+            body = body.replace(placeholder, str(value))
+        
+        # Determine if email should be sent immediately or scheduled
+        current_time = timezone.now()
+        send_immediately = scheduled_at is None or scheduled_at <= current_time
+        
+        if send_immediately:
+            # Send email immediately
+            try:
+                # Send email to all recipients
+                email_sent_count = 0
+                errors = []
+                
+                for recipient_email in recipients:
+                    try:
+                        send_mail(
+                            subject=subject,
+                            message=body,  # Plain text fallback
+                            from_email=settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER,
+                            recipient_list=[recipient_email],
+                            html_message=body,  # HTML content
+                            fail_silently=False,
+                        )
+                        email_sent_count += 1
+                    except Exception as e:
+                        # Log error but continue with other recipients
+                        error_msg = f"Error sending email to {recipient_email}: {str(e)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg)
+                
+                response_data = {
+                    'status': 'sent',
+                    'message': f'Email sent successfully to {email_sent_count} recipient(s)',
+                    'recipients_count': email_sent_count,
+                    'sent_at': current_time.isoformat(),
+                    'scheduled_at': None
+                }
+                
+                if errors:
+                    response_data['errors'] = errors
+                
+                return Response(response_data, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                return Response(
+                    {'error': f'Error sending email: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # Schedule email for later
+            from Scheduler.tasks import send_scheduled_email
+            
+            # Create scheduled email task
+            try:
+                # Schedule the email sending task
+                send_scheduled_email.apply_async(
+                    args=[template.id, recipients, placeholder_values],
+                    eta=scheduled_at
+                )
+                
+                return Response({
+                    'status': 'scheduled',
+                    'message': f'Email scheduled for {scheduled_at}',
+                    'recipients_count': len(recipients),
+                    'scheduled_at': scheduled_at.isoformat(),
+                    'sent_at': None
+                }, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                return Response(
+                    {'error': f'Error scheduling email: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
