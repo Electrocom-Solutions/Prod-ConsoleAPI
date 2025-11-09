@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, DecimalField, Value
 from django.db.models.functions import Coalesce
 from datetime import date
 from drf_yasg.utils import swagger_auto_schema
@@ -323,10 +323,16 @@ class ClientViewSet(viewsets.ModelViewSet):
         ).count()
         
         # Outstanding amount (unpaid AMC bills)
+        # Use output_field to specify DecimalField to avoid mixed type error
+        # Value(0) with output_field ensures the default value matches the DecimalField type
         outstanding_amount = AMCBilling.objects.filter(
             paid=False
         ).aggregate(
-            total=Coalesce(Sum('amount'), 0)
+            total=Coalesce(
+                Sum('amount'), 
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                output_field=DecimalField(max_digits=12, decimal_places=2)
+            )
         )['total'] or 0
         
         data = {
