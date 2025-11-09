@@ -179,6 +179,13 @@ class EmailTemplateCreateUpdateSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class NotificationStatisticsSerializer(serializers.Serializer):
+    """Serializer for notification statistics"""
+    total_notifications = serializers.IntegerField()
+    unread_count = serializers.IntegerField()
+    read_count = serializers.IntegerField()
+
+
 class EmailTemplateSendSerializer(serializers.Serializer):
     """Serializer for sending email using template"""
     recipients = serializers.CharField(

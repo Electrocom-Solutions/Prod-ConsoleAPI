@@ -5,7 +5,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -17,6 +17,7 @@ from .serializers import (
     NotificationMarkReadSerializer,
     BulkMarkReadSerializer,
     NotificationCreateSerializer,
+    NotificationStatisticsSerializer,
     EmailTemplateListSerializer,
     EmailTemplateDetailSerializer,
     EmailTemplateCreateUpdateSerializer,
@@ -31,13 +32,35 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """Return notifications for the current user only"""
+        """Return notifications for the current user only with search and filters"""
         if not self.request.user.is_authenticated:
             # During schema generation, return empty queryset
             return Notification.objects.none()
-        return Notification.objects.filter(
+        
+        queryset = Notification.objects.filter(
             recipient=self.request.user
-        ).select_related('created_by', 'recipient').order_by('-created_at')
+        ).select_related('created_by', 'recipient')
+        
+        # Search by title or message
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(message__icontains=search)
+            )
+        
+        # Filter by type
+        type_filter = self.request.query_params.get('type', None)
+        if type_filter:
+            queryset = queryset.filter(type=type_filter)
+        
+        # Filter by read status
+        is_read_filter = self.request.query_params.get('is_read', None)
+        if is_read_filter is not None:
+            is_read = is_read_filter.lower() == 'true'
+            queryset = queryset.filter(is_read=is_read)
+        
+        return queryset.order_by('-created_at')
     
     def get_serializer_class(self):
         if self.action in ['list']:
@@ -64,6 +87,18 @@ class NotificationViewSet(viewsets.ModelViewSet):
         - Includes scheduled and sent timestamps if applicable
         - Sorted by creation date (newest first)
         
+        **Search Options:**
+        - search: Search by title or message (case-insensitive partial match)
+        
+        **Filtering Options:**
+        - type: Filter by notification type (Task, AMC, Tender, Payroll, System, Other)
+        - is_read: Filter by read status (true/false)
+        
+        **Query Parameters:**
+        - search (optional): Search by title or message
+        - type (optional): Filter by notification type
+        - is_read (optional): Filter by read status (true/false)
+        
         **Note:**
         Only notifications for the authenticated user are returned.
         
@@ -71,6 +106,30 @@ class NotificationViewSet(viewsets.ModelViewSet):
         Results are paginated (20 items per page by default) and sorted by creation date (newest first).
         """,
         tags=['Notifications'],
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description='Search by title or message',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'type',
+                openapi.IN_QUERY,
+                description='Filter by notification type',
+                type=openapi.TYPE_STRING,
+                enum=['Task', 'AMC', 'Tender', 'Payroll', 'System', 'Other'],
+                required=False
+            ),
+            openapi.Parameter(
+                'is_read',
+                openapi.IN_QUERY,
+                description='Filter by read status',
+                type=openapi.TYPE_BOOLEAN,
+                required=False
+            ),
+        ],
         responses={
             200: openapi.Response(
                 description="List of notifications",
@@ -90,6 +149,63 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         """Get all notifications for the current user"""
         return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='notification_statistics',
+        operation_summary="Get Notification Statistics",
+        operation_description="""
+        Retrieve statistics for notifications for the currently authenticated user.
+        
+        **What it returns:**
+        - total_notifications: Total number of notifications for the current user
+        - unread_count: Number of unread notifications
+        - read_count: Number of read notifications
+        
+        **Note:**
+        Only statistics for the authenticated user are returned.
+        
+        **Use Case:**
+        Use this endpoint to populate dashboard tiles showing notification metrics.
+        """,
+        tags=['Notifications'],
+        responses={
+            200: openapi.Response(
+                description="Notification statistics",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'total_notifications': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total number of notifications'),
+                        'unread_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of unread notifications'),
+                        'read_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of read notifications')
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='statistics')
+    def statistics(self, request):
+        """Get notification statistics for current user"""
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Get statistics for current user
+        notifications = Notification.objects.filter(recipient=request.user)
+        
+        total_notifications = notifications.count()
+        unread_count = notifications.filter(is_read=False).count()
+        read_count = notifications.filter(is_read=True).count()
+        
+        data = {
+            'total_notifications': total_notifications,
+            'unread_count': unread_count,
+            'read_count': read_count
+        }
+        
+        serializer = NotificationStatisticsSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @swagger_auto_schema(
         operation_id='notification_retrieve',
@@ -316,6 +432,19 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 {'error': 'Either notification_ids or mark_all must be provided'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
+    def destroy(self, request, *args, **kwargs):
+        """Delete a notification"""
+        notification = self.get_object()
+        
+        # Ensure user can only delete their own notifications
+        if notification.recipient != request.user:
+            return Response(
+                {'error': 'You can only delete your own notifications'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().destroy(request, *args, **kwargs)
 
 
 class EmailTemplateViewSet(viewsets.ModelViewSet):
