@@ -85,6 +85,7 @@ All list endpoints are paginated with 20 items per page by default.
        path('api/', include('Accounts.urls')),
        path('api/', include('Inventory.urls')),
        path('api/', include('Notifications.urls')),
+       path('api/', include('Profiles.urls')),
    ],
 )
 
@@ -104,6 +105,7 @@ urlpatterns = [
     path('api/', include('Accounts.urls')),
     path('api/', include('Inventory.urls')),
     path('api/', include('Notifications.urls')),
+    path('api/', include('Profiles.urls')),
     
     # Swagger/OpenAPI Documentation
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),

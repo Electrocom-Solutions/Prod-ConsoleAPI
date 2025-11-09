@@ -12,6 +12,8 @@ class Profile(models.Model):
     state = models.CharField(max_length=100, blank=True, null=True)
     pin_code = models.CharField(max_length=20, blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
+    aadhar_number = models.CharField(max_length=20, blank=True, null=True)
+    pan_number = models.CharField(max_length=20, blank=True, null=True)
     aadhar_card = models.FileField(upload_to="profiles/docs/", blank=True, null=True)
     pan_card = models.FileField(upload_to="profiles/docs/", blank=True, null=True)
 
