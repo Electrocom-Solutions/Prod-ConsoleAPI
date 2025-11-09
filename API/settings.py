@@ -548,8 +548,13 @@ SESSION_COOKIE_HTTPONLY = True
 # Set SESSION_COOKIE_SECURE based on environment
 # In production with HTTPS, this should be True
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
-# For production, also set SESSION_COOKIE_DOMAIN if needed
-# SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in'  # Uncomment if using subdomain cookies
+# For production, set SESSION_COOKIE_DOMAIN to allow cookies across subdomains
+# This allows the session cookie to be accessible from both console.electrocomsolutions.in and consoleapi.electrocomsolutions.in
+SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN', None)  # Set to '.electrocomsolutions.in' in production
+if SESSION_COOKIE_DOMAIN:
+    SESSION_COOKIE_DOMAIN = SESSION_COOKIE_DOMAIN.strip()
+    if not SESSION_COOKIE_DOMAIN:
+        SESSION_COOKIE_DOMAIN = None
 
 # CSRF Cookie Configuration
 # CSRF cookie should match session cookie settings for consistency
@@ -557,7 +562,13 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
 CSRF_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'  # Match session cookie secure setting
 # CSRF_COOKIE_DOMAIN should match SESSION_COOKIE_DOMAIN if set
-# CSRF_COOKIE_DOMAIN = '.electrocomsolutions.in'  # Uncomment if using subdomain cookies
+# This is critical for cross-subdomain setups (e.g., console.electrocomsolutions.in -> consoleapi.electrocomsolutions.in)
+# Set to the same domain as SESSION_COOKIE_DOMAIN to ensure cookies are accessible from both subdomains
+CSRF_COOKIE_DOMAIN = SESSION_COOKIE_DOMAIN  # Match session cookie domain
+CSRF_COOKIE_PATH = '/'  # Ensure cookie is available for all paths
 CSRF_USE_SESSIONS = False  # Use cookies, not sessions, for CSRF token storage
 CSRF_COOKIE_NAME = 'csrftoken'  # Default cookie name
-CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  # Header name Django expects
+# Django converts header name internally - we send X-CSRFToken, Django expects HTTP_X_CSRFTOKEN
+# This setting is the internal header name Django uses after processing
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  # Internal header name Django expects (don't change this)
+# Django will accept X-CSRFToken, X-Csrftoken, or x-csrftoken headers (case-insensitive)
