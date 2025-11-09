@@ -5,6 +5,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Q, Sum, Count
 from django.db.models.functions import Coalesce
 from django.db import transaction
+from django.http import FileResponse
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from drf_yasg.utils import swagger_auto_schema
@@ -813,6 +814,59 @@ class TaskViewSet(viewsets.ModelViewSet):
             404: openapi.Response(description="Document not found")
         }
     )
+    @swagger_auto_schema(
+        operation_id='task_download_document',
+        operation_summary="Download Task Document",
+        operation_description="""
+        Download a document attached to a task.
+        
+        **What it does:**
+        - Returns the file for download
+        - Validates that the document belongs to the specified task
+        
+        **Path Parameters:**
+        - task_id: ID of the task
+        - document_id: ID of the document to download
+        
+        **Response:**
+        Returns the file for download.
+        """,
+        tags=['Task Management'],
+        responses={
+            200: openapi.Response(description="File download"),
+            404: openapi.Response(description="Document not found")
+        }
+    )
+    @action(detail=True, methods=['get'], url_path='download-document/(?P<document_id>[0-9]+)')
+    def download_document(self, request, pk=None, document_id=None):
+        """Download a document from a task"""
+        try:
+            task = self.get_object()
+            document = TaskAttachment.objects.get(
+                id=document_id,
+                task_id=pk
+            )
+            
+            if not document.file:
+                return Response(
+                    {'error': 'File not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Return file response
+            return FileResponse(document.file.open(), as_attachment=True, filename=document.file.name.split('/')[-1])
+            
+        except TaskAttachment.DoesNotExist:
+            return Response(
+                {'error': 'Document not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error downloading document: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     @action(detail=True, methods=['delete'], url_path='delete-document/(?P<document_id>[0-9]+)')
     def delete_document(self, request, pk=None, document_id=None):
         """Delete a document from a task"""
@@ -922,6 +976,261 @@ class TaskViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Error deleting resource: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='task_approve',
+        operation_summary="Approve Task",
+        operation_description="""
+        Approve a single task (change status from Draft to In Progress).
+        
+        **What it does:**
+        - Updates task status from "Draft" to "In Progress"
+        - Creates activity log entry
+        - Sends notification to employee if task is assigned
+        
+        **Response:**
+        Returns the updated task with all details.
+        """,
+        tags=['Task Management'],
+        responses={
+            200: openapi.Response(
+                description="Task approved successfully",
+                schema=TaskDetailSerializer()
+            ),
+            400: openapi.Response(
+                description="Task cannot be approved (not in Draft status)",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve(self, request, pk=None):
+        """Approve a single task"""
+        try:
+            task = self.get_object()
+            
+            # Check if task is in Draft status
+            if task.status != Task.Status.DRAFT:
+                return Response(
+                    {'error': f'Task cannot be approved. Current status: {task.status}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update task status to In Progress (approved)
+            task.status = Task.Status.IN_PROGRESS
+            task.updated_by = request.user
+            task.save()
+            
+            # Create activity log
+            ActivityLog.objects.create(
+                entity_type=ActivityLog.EntityType.TASK,
+                entity_id=task.id,
+                action=ActivityLog.Action.APPROVED,
+                description=f"Task {task.task_name} approved",
+                created_by=request.user
+            )
+            
+            # Notify employee when task is approved
+            if task.employee and task.employee.profile and task.employee.profile.user:
+                employee_user = task.employee.profile.user
+                send_notification_to_user(
+                    user=employee_user,
+                    title="Task Approved",
+                    message=f"Your task '{task.task_name}' has been approved",
+                    notification_type="Task",
+                    created_by=request.user
+                )
+            
+            # Return updated task
+            serializer = TaskDetailSerializer(task, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error approving task: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='task_reject',
+        operation_summary="Reject Task",
+        operation_description="""
+        Reject a single task (change status from Draft to Canceled).
+        
+        **What it does:**
+        - Updates task status from "Draft" to "Canceled"
+        - Creates activity log entry with rejection reason
+        - Sends notification to employee if task is assigned
+        
+        **Request Body:**
+        ```json
+        {
+          "reason": "Optional rejection reason"
+        }
+        ```
+        
+        **Response:**
+        Returns the updated task with all details.
+        """,
+        tags=['Task Management'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'reason': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description='Optional rejection reason'
+                )
+            },
+            required=[]
+        ),
+        responses={
+            200: openapi.Response(
+                description="Task rejected successfully",
+                schema=TaskDetailSerializer()
+            ),
+            400: openapi.Response(
+                description="Task cannot be rejected (not in Draft status)",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject(self, request, pk=None):
+        """Reject a single task"""
+        try:
+            task = self.get_object()
+            
+            # Check if task is in Draft status
+            if task.status != Task.Status.DRAFT:
+                return Response(
+                    {'error': f'Task cannot be rejected. Current status: {task.status}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get rejection reason
+            reason = request.data.get('reason', 'Task rejected')
+            
+            # Update task status to Canceled (rejected)
+            task.status = Task.Status.CANCELED
+            task.updated_by = request.user
+            task.save()
+            
+            # Create activity log
+            ActivityLog.objects.create(
+                entity_type=ActivityLog.EntityType.TASK,
+                entity_id=task.id,
+                action=ActivityLog.Action.UPDATED,
+                description=f"Task {task.task_name} rejected: {reason}",
+                created_by=request.user
+            )
+            
+            # Notify employee when task is rejected
+            if task.employee and task.employee.profile and task.employee.profile.user:
+                employee_user = task.employee.profile.user
+                send_notification_to_user(
+                    user=employee_user,
+                    title="Task Rejected",
+                    message=f"Your task '{task.task_name}' has been rejected. Reason: {reason}",
+                    notification_type="Task",
+                    created_by=request.user
+                )
+            
+            # Return updated task
+            serializer = TaskDetailSerializer(task, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error rejecting task: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='task_update_resource',
+        operation_summary="Update Task Resource",
+        operation_description="""
+        Update a resource attached to a task. This is used to update unit costs and quantities.
+        
+        **What it does:**
+        - Updates resource quantity, unit_cost, and recalculates total_cost
+        - Creates activity log entry
+        - Returns the updated resource
+        
+        **Request Fields:**
+        - quantity (optional): Updated quantity
+        - unit_cost (optional): Updated unit cost
+        - total_cost (optional): Updated total cost (will be recalculated if not provided)
+        
+        **Response:**
+        Returns the updated resource record.
+        """,
+        tags=['Task Management'],
+        request_body=TaskResourceCreateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Resource updated successfully",
+                schema=TaskResourceCreateSerializer()
+            ),
+            404: openapi.Response(description="Resource not found")
+        }
+    )
+    @action(detail=True, methods=['patch'], url_path='update-resource/(?P<resource_id>[0-9]+)')
+    def update_resource(self, request, pk=None, resource_id=None):
+        """Update a resource attached to a task"""
+        try:
+            task = self.get_object()
+            resource = TaskResource.objects.get(
+                id=resource_id,
+                task_id=pk
+            )
+            
+            # Update resource fields
+            quantity = request.data.get('quantity', resource.quantity)
+            unit_cost = request.data.get('unit_cost', resource.unit_cost)
+            total_cost = request.data.get('total_cost')
+            
+            # Calculate total_cost if not provided
+            if total_cost is None:
+                total_cost = float(quantity) * float(unit_cost)
+            
+            resource.quantity = quantity
+            resource.unit_cost = unit_cost
+            resource.total_cost = total_cost
+            resource.updated_by = request.user
+            resource.save()
+            
+            # Create activity log
+            ActivityLog.objects.create(
+                entity_type=ActivityLog.EntityType.TASK,
+                entity_id=task.id,
+                action=ActivityLog.Action.UPDATED,
+                description=f"Resource {resource.resource_name} updated in task {task.task_name}",
+                created_by=request.user
+            )
+            
+            serializer = TaskResourceCreateSerializer(resource, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except TaskResource.DoesNotExist:
+            return Response(
+                {'error': 'Resource not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error updating resource: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
