@@ -10,11 +10,12 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     email = serializers.SerializerMethodField()
     phone_number = serializers.SerializerMethodField()
     availability_status = serializers.SerializerMethodField()
+    profile_id = serializers.IntegerField(source='profile.id', read_only=True)
     
     class Meta:
         model = Employee
         fields = [
-            'id', 'employee_code', 'full_name', 'email', 'phone_number',
+            'id', 'employee_code', 'profile_id', 'full_name', 'email', 'phone_number',
             'designation', 'availability_status', 'created_at'
         ]
         read_only_fields = ['created_at']

@@ -2,7 +2,7 @@
 Serializers for Accounts app.
 """
 from rest_framework import serializers
-from .models import PaymentTracker
+from .models import PaymentTracker, BankAccount
 
 
 class PaymentTrackerListSerializer(serializers.ModelSerializer):
@@ -99,4 +99,121 @@ class PaymentTrackerStatisticsSerializer(serializers.Serializer):
     pending_payment_count = serializers.IntegerField()
     pending_payment_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
     total_paid = serializers.DecimalField(max_digits=15, decimal_places=2)
+
+
+# Bank Account Serializers
+class BankAccountListSerializer(serializers.ModelSerializer):
+    """Serializer for listing bank accounts"""
+    profile_id = serializers.IntegerField(source='profile.id', read_only=True)
+    profile_name = serializers.SerializerMethodField()
+    account_holder_name = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = BankAccount
+        fields = [
+            'id', 'profile_id', 'profile_name', 'account_holder_name',
+            'bank_name', 'account_number', 'ifsc_code', 'branch',
+            'created_at', 'created_by', 'created_by_username'
+        ]
+        read_only_fields = ['created_at', 'created_by']
+    
+    def get_profile_name(self, obj):
+        """Get profile name from user"""
+        if obj.profile and obj.profile.user:
+            user = obj.profile.user
+            if user.first_name or user.last_name:
+                return f"{user.first_name or ''} {user.last_name or ''}".strip()
+            return user.username
+        return None
+    
+    def get_account_holder_name(self, obj):
+        """Get account holder name from profile user"""
+        if obj.profile and obj.profile.user:
+            user = obj.profile.user
+            if user.first_name or user.last_name:
+                return f"{user.first_name or ''} {user.last_name or ''}".strip()
+            return user.username
+        return None
+
+
+class BankAccountDetailSerializer(serializers.ModelSerializer):
+    """Serializer for bank account details"""
+    profile_id = serializers.IntegerField(source='profile.id', read_only=True)
+    profile_name = serializers.SerializerMethodField()
+    account_holder_name = serializers.SerializerMethodField()
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    updated_by_username = serializers.CharField(source='updated_by.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = BankAccount
+        fields = [
+            'id', 'profile_id', 'profile_name', 'account_holder_name',
+            'bank_name', 'account_number', 'ifsc_code', 'branch',
+            'created_at', 'updated_at', 'created_by', 'created_by_username',
+            'updated_by', 'updated_by_username'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
+    
+    def get_profile_name(self, obj):
+        """Get profile name from user"""
+        if obj.profile and obj.profile.user:
+            user = obj.profile.user
+            if user.first_name or user.last_name:
+                return f"{user.first_name or ''} {user.last_name or ''}".strip()
+            return user.username
+        return None
+    
+    def get_account_holder_name(self, obj):
+        """Get account holder name from profile user"""
+        if obj.profile and obj.profile.user:
+            user = obj.profile.user
+            if user.first_name or user.last_name:
+                return f"{user.first_name or ''} {user.last_name or ''}".strip()
+            return user.username
+        return None
+
+
+class BankAccountCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating bank accounts"""
+    profile_id = serializers.IntegerField(write_only=True, required=True)
+    
+    class Meta:
+        model = BankAccount
+        fields = [
+            'id', 'profile_id', 'bank_name', 'account_number', 'ifsc_code', 'branch'
+        ]
+        read_only_fields = ['id']
+    
+    def create(self, validated_data):
+        """Create bank account"""
+        from Profiles.models import Profile
+        
+        profile_id = validated_data.pop('profile_id')
+        try:
+            profile = Profile.objects.get(id=profile_id)
+        except Profile.DoesNotExist:
+            raise serializers.ValidationError({'profile_id': 'Profile not found'})
+        
+        validated_data['profile'] = profile
+        user = self.context['request'].user
+        validated_data['created_by'] = user if user.is_authenticated else None
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Update bank account"""
+        if 'profile_id' in validated_data:
+            from Profiles.models import Profile
+            
+            profile_id = validated_data.pop('profile_id')
+            try:
+                profile = Profile.objects.get(id=profile_id)
+            except Profile.DoesNotExist:
+                raise serializers.ValidationError({'profile_id': 'Profile not found'})
+            
+            validated_data['profile'] = profile
+        
+        user = self.context['request'].user
+        validated_data['updated_by'] = user if user.is_authenticated else None
+        return super().update(instance, validated_data)
 

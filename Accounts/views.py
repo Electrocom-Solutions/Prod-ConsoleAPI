@@ -15,15 +15,19 @@ from drf_yasg import openapi
 import pandas as pd
 import logging
 
-from .models import PaymentTracker
+from .models import PaymentTracker, BankAccount
 from .serializers import (
     PaymentTrackerListSerializer,
     PaymentTrackerDetailSerializer,
     PaymentTrackerUploadSerializer,
     PaymentTrackerMarkPaidSerializer,
     BulkMarkPaymentPaidSerializer,
-    PaymentTrackerStatisticsSerializer
+    PaymentTrackerStatisticsSerializer,
+    BankAccountListSerializer,
+    BankAccountDetailSerializer,
+    BankAccountCreateUpdateSerializer
 )
+from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
@@ -654,3 +658,242 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
                 {'error': f'Error processing bulk mark as paid: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class BankAccountViewSet(viewsets.ModelViewSet):
+    """
+    Bank Account Management APIs
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = BankAccount.objects.select_related(
+        'profile', 'profile__user', 'created_by', 'updated_by'
+    ).all()
+    
+    def get_serializer_class(self):
+        if self.action in ['list']:
+            return BankAccountListSerializer
+        elif self.action in ['retrieve']:
+            return BankAccountDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return BankAccountCreateUpdateSerializer
+        return BankAccountListSerializer
+    
+    def get_queryset(self):
+        """Return bank accounts with search functionality"""
+        queryset = super().get_queryset()
+        
+        # Search by bank name, account number, IFSC code, branch, or profile name
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(bank_name__icontains=search) |
+                Q(account_number__icontains=search) |
+                Q(ifsc_code__icontains=search) |
+                Q(branch__icontains=search) |
+                Q(profile__user__first_name__icontains=search) |
+                Q(profile__user__last_name__icontains=search) |
+                Q(profile__user__username__icontains=search)
+            )
+        
+        # Filter by profile_id
+        profile_id = self.request.query_params.get('profile_id', None)
+        if profile_id:
+            try:
+                queryset = queryset.filter(profile_id=int(profile_id))
+            except ValueError:
+                pass
+        
+        # Filter by bank_name
+        bank_name = self.request.query_params.get('bank_name', None)
+        if bank_name:
+            queryset = queryset.filter(bank_name__icontains=bank_name)
+        
+        return queryset.order_by('-created_at')
+    
+    @swagger_auto_schema(
+        operation_id='bank_account_list',
+        operation_summary="Get All Bank Accounts",
+        operation_description="""
+        Retrieve a list of all bank accounts with search and filter functionality.
+        
+        **What it returns:**
+        - List of bank accounts with basic information (bank name, account number, IFSC code, branch, profile name)
+        
+        **Search Options:**
+        - search: Search by bank name, account number, IFSC code, branch, or profile name (case-insensitive partial match)
+        
+        **Filter Options:**
+        - profile_id: Filter by profile ID
+        - bank_name: Filter by bank name (case-insensitive partial match)
+        
+        **Query Parameters:**
+        - search (optional): Search by bank name, account number, IFSC code, branch, or profile name
+        - profile_id (optional): Filter by profile ID
+        - bank_name (optional): Filter by bank name
+        
+        **Pagination:**
+        Results are paginated (20 items per page by default) and sorted by creation date (newest first).
+        """,
+        tags=['Bank Account Dashboard'],
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description='Search by bank name, account number, IFSC code, branch, or profile name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'profile_id',
+                openapi.IN_QUERY,
+                description='Filter by profile ID',
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+            openapi.Parameter(
+                'bank_name',
+                openapi.IN_QUERY,
+                description='Filter by bank name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of bank accounts",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                        )
+                    }
+                )
+            )
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        """Get all bank accounts with search and filters"""
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='bank_account_retrieve',
+        operation_summary="Get Bank Account Details",
+        operation_description="""
+        Retrieve detailed information about a specific bank account.
+        
+        **What it returns:**
+        - Complete bank account information including all details
+        """,
+        tags=['Bank Account Dashboard'],
+        responses={
+            200: BankAccountDetailSerializer(),
+            404: openapi.Response(description="Bank account not found")
+        }
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """Get bank account details"""
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='bank_account_create',
+        operation_summary="Create Bank Account",
+        operation_description="""
+        Create a new bank account for a profile.
+        
+        **Required Fields:**
+        - profile_id: Profile ID
+        - bank_name: Bank Name
+        - account_number: Account Number
+        - ifsc_code: IFSC Code
+        
+        **Optional Fields:**
+        - branch: Branch Name
+        
+        **Response:**
+        Returns the created bank account.
+        """,
+        tags=['Bank Account Dashboard'],
+        request_body=BankAccountCreateUpdateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Bank account created successfully",
+                schema=BankAccountCreateUpdateSerializer()
+            )
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        """Create a new bank account"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    @swagger_auto_schema(
+        operation_id='bank_account_update',
+        operation_summary="Update Bank Account",
+        operation_description="""
+        Update an existing bank account. All fields are optional - only provided fields will be updated.
+        
+        **Fields:**
+        Same as create endpoint - all fields are optional for update.
+        
+        **Response:**
+        Returns the updated bank account.
+        """,
+        tags=['Bank Account Dashboard'],
+        request_body=BankAccountCreateUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Bank account updated successfully",
+                schema=BankAccountCreateUpdateSerializer()
+            )
+        }
+    )
+    def update(self, request, *args, **kwargs):
+        """Update bank account information"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+    
+    @swagger_auto_schema(
+        operation_id='bank_account_partial_update',
+        operation_summary="Partial Update Bank Account",
+        operation_description="""
+        Partially update a bank account's information. Only provided fields will be updated.
+        """,
+        tags=['Bank Account Dashboard'],
+        request_body=BankAccountCreateUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Bank account partially updated successfully",
+                schema=BankAccountCreateUpdateSerializer()
+            )
+        }
+    )
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update bank account information"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='bank_account_delete',
+        operation_summary="Delete Bank Account",
+        operation_description="""
+        Delete a bank account from the system. This action is permanent and cannot be undone.
+        """,
+        tags=['Bank Account Dashboard'],
+        responses={
+            204: openapi.Response(description="Bank account deleted successfully"),
+            404: openapi.Response(description="Bank account not found")
+        }
+    )
+    def destroy(self, request, *args, **kwargs):
+        """Delete a bank account"""
+        return super().destroy(request, *args, **kwargs)
