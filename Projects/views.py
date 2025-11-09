@@ -9,7 +9,8 @@ from .models import Project
 from .serializers import (
     ProjectListSerializer,
     ProjectDetailSerializer,
-    ProjectCreateSerializer
+    ProjectCreateSerializer,
+    ProjectStatisticsSerializer
 )
 
 
@@ -38,6 +39,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 Q(client__last_name__icontains=search)
             )
         
+        # Filter by status
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
         return queryset.order_by('-created_at')
     
     @swagger_auto_schema(
@@ -53,8 +59,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
         **Search Options:**
         - search: Search by project name or client name (first name, last name) (case-insensitive partial match)
         
+        **Filter Options:**
+        - status: Filter by project status (Planned, In Progress, On Hold, Completed, Canceled)
+        
         **Query Parameters:**
         - search (optional): Search by project name or client name
+        - status (optional): Filter by project status
         
         **Pagination:**
         Results are paginated (20 items per page by default) and sorted by creation date (newest first).
@@ -65,6 +75,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 'search',
                 openapi.IN_QUERY,
                 description='Search by project name or client name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'status',
+                openapi.IN_QUERY,
+                description='Filter by project status (Planned, In Progress, On Hold, Completed, Canceled)',
                 type=openapi.TYPE_STRING,
                 required=False
             ),
@@ -226,3 +243,63 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Delete a project"""
         return super().destroy(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='project_statistics',
+        operation_summary="Get Project Management Statistics",
+        operation_description="""
+        Retrieve statistics for the project management dashboard.
+        
+        **What it returns:**
+        - total_projects: Total number of projects in the system
+        - planned_projects: Number of projects with "Planned" status
+        - in_progress_projects: Number of projects with "In Progress" status
+        - completed_projects: Number of projects with "Completed" status
+        - on_hold_projects: Number of projects with "On Hold" status
+        - canceled_projects: Number of projects with "Canceled" status
+        
+        **Use Case:**
+        Use this endpoint to populate dashboard tiles showing key metrics for project management.
+        """,
+        tags=['Project Management'],
+        responses={
+            200: openapi.Response(
+                description="Project management statistics",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'total_projects': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total number of projects'),
+                        'planned_projects': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of planned projects'),
+                        'in_progress_projects': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of in progress projects'),
+                        'completed_projects': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of completed projects'),
+                        'on_hold_projects': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of on hold projects'),
+                        'canceled_projects': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of canceled projects')
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='statistics')
+    def statistics(self, request):
+        """Get project management statistics for dashboard"""
+        # Total projects
+        total_projects = Project.objects.count()
+        
+        # Projects by status
+        planned_projects = Project.objects.filter(status=Project.Status.PLANNED).count()
+        in_progress_projects = Project.objects.filter(status=Project.Status.IN_PROGRESS).count()
+        completed_projects = Project.objects.filter(status=Project.Status.COMPLETED).count()
+        on_hold_projects = Project.objects.filter(status=Project.Status.ON_HOLD).count()
+        canceled_projects = Project.objects.filter(status=Project.Status.CANCELED).count()
+        
+        data = {
+            'total_projects': total_projects,
+            'planned_projects': planned_projects,
+            'in_progress_projects': in_progress_projects,
+            'completed_projects': completed_projects,
+            'on_hold_projects': on_hold_projects,
+            'canceled_projects': canceled_projects
+        }
+        
+        serializer = ProjectStatisticsSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)

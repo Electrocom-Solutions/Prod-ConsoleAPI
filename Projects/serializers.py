@@ -15,6 +15,15 @@ class ProjectListSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
+class ProjectStatisticsSerializer(serializers.Serializer):
+    total_projects = serializers.IntegerField()
+    planned_projects = serializers.IntegerField()
+    in_progress_projects = serializers.IntegerField()
+    completed_projects = serializers.IntegerField()
+    on_hold_projects = serializers.IntegerField()
+    canceled_projects = serializers.IntegerField()
+
+
 class ProjectDetailSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.full_name', read_only=True)
     tender_name = serializers.CharField(source='tender.name', read_only=True, allow_null=True)
