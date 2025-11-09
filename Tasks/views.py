@@ -1074,15 +1074,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         Returns the updated task with all details.
         """,
         tags=['Task Management'],
-        manual_parameters=[
-            openapi.Parameter(
-                'reason',
-                openapi.IN_QUERY,
-                description='Optional rejection reason',
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-        ],
         responses={
             200: openapi.Response(
                 description="Task rejected successfully",

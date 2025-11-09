@@ -196,7 +196,6 @@ class StockViewSet(viewsets.ModelViewSet):
         Returns the created stock item with all details.
         """,
         tags=['Stock Dashboard'],
-        request_body=StockCreateSerializer,
         responses={
             201: openapi.Response(
                 description="Stock item created successfully",
