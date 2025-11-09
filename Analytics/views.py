@@ -142,5 +142,10 @@ class DashboardViewSet(viewsets.ViewSet):
             'recent_activities': activities_data
         }
         
-        serializer = DashboardStatsSerializer(data)
-        return Response(serializer.data)
+        # Validate and serialize the data
+        serializer = DashboardStatsSerializer(data=data)
+        if serializer.is_valid():
+            return Response(serializer.validated_data)
+        else:
+            # If validation fails, return the data anyway (shouldn't happen with our structure)
+            return Response(data)

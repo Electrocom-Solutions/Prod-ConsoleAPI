@@ -489,7 +489,9 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True
 
 # CORS Configuration
-CORS_ALLOWED_ORIGINS = [
+# Get CORS allowed origins from environment variable (comma-separated)
+# Default values for development if not set in .env
+_default_cors_origins = [
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
@@ -497,6 +499,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5000",
     "http://127.0.0.1:5001",
 ]
+
+_cors_origins_env = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if _cors_origins_env:
+    # Parse comma-separated origins from environment variable
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
+else:
+    # Use default development origins
+    CORS_ALLOWED_ORIGINS = _default_cors_origins
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -513,7 +523,9 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # CSRF Configuration for Next.js
-CSRF_TRUSTED_ORIGINS = [
+# Get CSRF trusted origins from environment variable (comma-separated)
+# Default values for development if not set in .env
+_default_csrf_origins = [
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
@@ -522,7 +534,19 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5001",
 ]
 
+_csrf_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if _csrf_origins_env:
+    # Parse comma-separated origins from environment variable
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in _csrf_origins_env.split(',') if origin.strip()]
+else:
+    # Use default development origins
+    CSRF_TRUSTED_ORIGINS = _default_csrf_origins
+
 # Session Configuration
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+# Set SESSION_COOKIE_SECURE based on environment
+# In production with HTTPS, this should be True
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
+# For production, also set SESSION_COOKIE_DOMAIN if needed
+# SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in'  # Uncomment if using subdomain cookies
