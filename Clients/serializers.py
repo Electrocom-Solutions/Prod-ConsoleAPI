@@ -243,7 +243,7 @@ class FirmListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'firm_name', 'firm_type', 'type_display', 'firm_owner_profile',
             'firm_owner_name', 'official_email', 'official_mobile_number',
-            'gst_number', 'pan_number', 'created_at', 'created_by', 'created_by_username'
+            'address', 'gst_number', 'pan_number', 'created_at', 'created_by', 'created_by_username'
         ]
         read_only_fields = ['created_at', 'created_by']
     

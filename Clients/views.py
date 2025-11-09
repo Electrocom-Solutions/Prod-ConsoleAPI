@@ -362,8 +362,29 @@ class FirmViewSet(viewsets.ModelViewSet):
         return FirmListSerializer
     
     def get_queryset(self):
-        """Return firms"""
+        """Return firms with search and filtering"""
         queryset = super().get_queryset()
+        
+        # Search by firm name, GST number, PAN number, email, mobile, or owner name
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(firm_name__icontains=search) |
+                Q(gst_number__icontains=search) |
+                Q(pan_number__icontains=search) |
+                Q(official_email__icontains=search) |
+                Q(official_mobile_number__icontains=search) |
+                Q(address__icontains=search) |
+                Q(firm_owner_profile__user__first_name__icontains=search) |
+                Q(firm_owner_profile__user__last_name__icontains=search) |
+                Q(firm_owner_profile__user__username__icontains=search)
+            )
+        
+        # Filter by firm type
+        firm_type_filter = self.request.query_params.get('firm_type', None)
+        if firm_type_filter:
+            queryset = queryset.filter(firm_type=firm_type_filter)
+        
         return queryset.order_by('-created_at')
     
     @swagger_auto_schema(
@@ -375,10 +396,37 @@ class FirmViewSet(viewsets.ModelViewSet):
         **What it returns:**
         - List of firms with basic information (name, type, owner, email, mobile, GST, PAN)
         
+        **Search Options:**
+        - search: Search by firm name, GST number, PAN number, email, mobile, address, or owner name (case-insensitive partial match)
+        
+        **Filter Options:**
+        - firm_type: Filter by firm type (Proprietorship, Partnership, Pvt Ltd, LLP)
+        
+        **Query Parameters:**
+        - search (optional): Search by firm name, GST number, PAN number, email, mobile, address, or owner name
+        - firm_type (optional): Filter by firm type (Proprietorship, Partnership, Pvt Ltd, LLP)
+        
         **Pagination:**
         Results are paginated (20 items per page by default) and sorted by creation date (newest first).
         """,
         tags=['Settings Module'],
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description='Search by firm name, GST number, PAN number, email, mobile, address, or owner name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'firm_type',
+                openapi.IN_QUERY,
+                description='Filter by firm type',
+                type=openapi.TYPE_STRING,
+                enum=['Proprietorship', 'Partnership', 'Pvt Ltd', 'LLP'],
+                required=False
+            ),
+        ],
         responses={
             200: openapi.Response(
                 description="List of firms",
