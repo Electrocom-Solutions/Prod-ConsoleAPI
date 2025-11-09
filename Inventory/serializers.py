@@ -59,3 +59,10 @@ class StockUpdateSerializer(serializers.ModelSerializer):
         validated_data['updated_by'] = user if user.is_authenticated else None
         return super().update(instance, validated_data)
 
+
+class StockStatisticsSerializer(serializers.Serializer):
+    """Serializer for stock statistics"""
+    total_resources = serializers.IntegerField()
+    total_inventory_value = serializers.DecimalField(max_digits=15, decimal_places=2)
+    low_stock_items = serializers.IntegerField()
+

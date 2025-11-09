@@ -13,6 +13,7 @@ import pandas as pd
 from django.contrib.auth.models import User
 from Profiles.models import Profile
 from Accounts.models import BankAccount
+from Projects.models import Project
 
 from .models import Employee, Attendance, ContractWorker, PayrollRecord, HolidayCalander
 from .serializers import (
@@ -764,10 +765,12 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         - Account Number (optional)
         - IFSC Code (optional)
         - Bank Branch (optional)
+        - Project (optional) - Project name or ID to assign the worker to a project
         
         **What it does:**
         - Reads the Excel file and processes each row
         - Creates User, Profile, BankAccount (if bank details provided), and ContractWorker records
+        - Assigns worker to project if project name/ID is provided in the Excel file
         - Returns a summary of successful and failed imports
         
         **Response:**
@@ -864,7 +867,10 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'ifsc code': 'ifsc_code',
                 'ifsc': 'ifsc_code',
                 'bank branch': 'bank_branch',
-                'branch': 'bank_branch'
+                'branch': 'bank_branch',
+                'project': 'project',
+                'project name': 'project',
+                'project_id': 'project'
             }
             
             # Rename columns
@@ -983,6 +989,26 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                     uan_number = str(row.get('uan_number', '')).strip() or None
                     department = str(row.get('department', '')).strip() or None
                     
+                    # Extract project (by project name or ID)
+                    project = None
+                    project_str = str(row.get('project', '')).strip()
+                    if project_str:
+                        try:
+                            # Try to find project by name first
+                            project = Project.objects.filter(name__icontains=project_str).first()
+                            if not project:
+                                # Try by ID
+                                try:
+                                    project_id = int(project_str)
+                                    project = Project.objects.filter(id=project_id).first()
+                                except ValueError:
+                                    pass
+                            # Note: If project not found, worker will be created without project assignment
+                            # This is not a fatal error, so we don't add to errors list
+                        except Exception as e:
+                            # Only log error if it's a critical issue
+                            pass  # Project assignment is optional, so we continue even if project is not found
+                    
                     # Extract bank details
                     bank_name = str(row.get('bank_name', '')).strip() or None
                     account_number = str(row.get('account_number', '')).strip() or None
@@ -1033,6 +1059,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                         # Create contract worker
                         ContractWorker.objects.create(
                             profile=profile,
+                            project=project,
                             worker_type=worker_type,
                             monthly_salary=monthly_salary,
                             aadhar_no=aadhar_no,

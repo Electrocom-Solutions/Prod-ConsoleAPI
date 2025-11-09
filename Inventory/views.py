@@ -14,7 +14,8 @@ from .serializers import (
     StockListSerializer,
     StockDetailSerializer,
     StockCreateSerializer,
-    StockUpdateSerializer
+    StockUpdateSerializer,
+    StockStatisticsSerializer
 )
 
 
@@ -99,6 +100,62 @@ class StockViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         """List all stock items with search"""
         return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_id='stock_statistics',
+        operation_summary="Get Stock Management Statistics",
+        operation_description="""
+        Retrieve statistics for the stock management dashboard.
+        
+        **What it returns:**
+        - total_resources: Total number of stock items in the inventory
+        - total_inventory_value: Total value of all stock items (sum of quantity * price)
+        - low_stock_items: Number of stock items with quantity less than 100
+        
+        **Use Case:**
+        Use this endpoint to populate dashboard tiles showing key metrics for stock management.
+        """,
+        tags=['Stock Dashboard'],
+        responses={
+            200: openapi.Response(
+                description="Stock management statistics",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'total_resources': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total number of stock items'),
+                        'total_inventory_value': openapi.Schema(type=openapi.TYPE_NUMBER, description='Total inventory value'),
+                        'low_stock_items': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of low stock items (quantity < 100)')
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='statistics')
+    def statistics(self, request):
+        """Get stock management statistics for dashboard"""
+        # Total resources count
+        total_resources = Stock.objects.count()
+        
+        # Calculate total inventory value (sum of quantity * price)
+        # Using aggregation to calculate sum of (quantity * price)
+        stocks = Stock.objects.all()
+        total_inventory_value = 0
+        low_stock_items = 0
+        
+        for stock in stocks:
+            total_value = float(stock.quantity) * float(stock.price)
+            total_inventory_value += total_value
+            if stock.quantity < 100:
+                low_stock_items += 1
+        
+        data = {
+            'total_resources': total_resources,
+            'total_inventory_value': float(total_inventory_value),
+            'low_stock_items': low_stock_items
+        }
+        
+        serializer = StockStatisticsSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @swagger_auto_schema(
         operation_id='stock_retrieve',
