@@ -2497,13 +2497,32 @@ class HolidayCalendarViewSet(viewsets.ModelViewSet):
         return HolidayCalendarListSerializer
     
     def get_queryset(self):
-        """Return holidays with filtering"""
+        """Return holidays with filtering and search"""
         queryset = super().get_queryset()
+        
+        # Search by holiday name
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(name__icontains=search)
         
         # Filter by holiday type
         holiday_type_filter = self.request.query_params.get('type', None)
         if holiday_type_filter:
             queryset = queryset.filter(type=holiday_type_filter)
+        
+        # Filter by year (default to current year if not specified)
+        year_filter = self.request.query_params.get('year', None)
+        if year_filter:
+            try:
+                year = int(year_filter)
+                queryset = queryset.filter(date__year=year)
+            except ValueError:
+                pass
+        else:
+            # Default to current year if no year filter
+            from datetime import date
+            current_year = date.today().year
+            queryset = queryset.filter(date__year=current_year)
         
         return queryset.order_by('date')
     
@@ -2584,11 +2603,17 @@ class HolidayCalendarViewSet(viewsets.ModelViewSet):
         **What it returns:**
         - List of holidays with basic information (name, date, type)
         
+        **Search Options:**
+        - search: Search by holiday name (case-insensitive partial match)
+        
         **Filtering Options:**
         - type: Filter by holiday type (National, Festival, Company)
+        - year: Filter by year (defaults to current year if not specified)
         
         **Query Parameters:**
+        - search (optional): Search by holiday name
         - type (optional): Filter by holiday type (National, Festival, Company)
+        - year (optional): Filter by year (YYYY format, defaults to current year)
         
         **Pagination:**
         Results are paginated (20 items per page by default) and sorted by date (earliest first).
@@ -2596,11 +2621,25 @@ class HolidayCalendarViewSet(viewsets.ModelViewSet):
         tags=['Holiday Calendar Dashboard'],
         manual_parameters=[
             openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description='Search by holiday name',
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
                 'type',
                 openapi.IN_QUERY,
                 description='Filter by holiday type',
                 type=openapi.TYPE_STRING,
                 enum=['National', 'Festival', 'Company'],
+                required=False
+            ),
+            openapi.Parameter(
+                'year',
+                openapi.IN_QUERY,
+                description='Filter by year (YYYY format, defaults to current year)',
+                type=openapi.TYPE_INTEGER,
                 required=False
             ),
         ],
