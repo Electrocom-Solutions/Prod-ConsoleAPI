@@ -78,10 +78,10 @@ class OwnerLoginSerializer(serializers.Serializer):
                 'error': 'User account is disabled.'
             })
         
-        # Check if user is owner (superuser)
-        if not user.is_superuser:
+        # Check if user is staff or superuser (required for web app access)
+        if not (user.is_staff or user.is_superuser):
             raise serializers.ValidationError({
-                'error': 'Access denied. Only owners can login through this endpoint.'
+                'error': 'Access denied. Only staff members and superusers can access the web application.'
             })
         
         attrs['user'] = user

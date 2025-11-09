@@ -19,7 +19,12 @@ from .serializers import OwnerLoginSerializer, EmployeeMobileLoginSerializer
     operation_id='owner_login',
     operation_summary="Owner Login",
     operation_description="""
-    Login endpoint for owners (superusers/admins) to access the system.
+    Login endpoint for staff members and superusers to access the web application.
+    
+    **Requirements:**
+    - User must be a staff member (is_staff=True) or superuser (is_superuser=True)
+    - User account must be active
+    - Only staff and superusers can access the web application
     
     **Features:**
     - Supports login with email, username, or mobile number
@@ -36,7 +41,7 @@ from .serializers import OwnerLoginSerializer, EmployeeMobileLoginSerializer
     - If unchecked: Session expires when browser closes (default)
     
     **Response:**
-    Returns user details including username, email, first name, last name, and login status.
+    Returns user details including username, email, first name, last name, is_staff, is_superuser, and login status.
     """,
     tags=['Authentication'],
     request_body=OwnerLoginSerializer,
@@ -57,6 +62,7 @@ from .serializers import OwnerLoginSerializer, EmployeeMobileLoginSerializer
                             'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='First name'),
                             'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='Last name'),
                             'is_superuser': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Is superuser'),
+                            'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Is staff'),
                         }
                     ),
                     'session_expiry': openapi.Schema(type=openapi.TYPE_STRING, description='Session expiry date/time'),
@@ -112,6 +118,7 @@ def owner_login(request):
             'first_name': user.first_name,
             'last_name': user.last_name,
             'is_superuser': user.is_superuser,
+            'is_staff': user.is_staff,
         },
         'session_expiry': session_expiry.isoformat() if session_expiry else None,
     }, status=status.HTTP_200_OK)
@@ -293,6 +300,7 @@ def logout_view(request):
                             'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='First name'),
                             'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='Last name'),
                             'is_superuser': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Is superuser'),
+                            'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Is staff'),
                         }
                     ),
                 }
@@ -300,6 +308,15 @@ def logout_view(request):
         ),
         401: openapi.Response(
             description="Unauthorized",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
+                }
+            )
+        ),
+        403: openapi.Response(
+            description="Forbidden - User is not staff or superuser",
             schema=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
@@ -314,8 +331,16 @@ def logout_view(request):
 def get_current_user(request):
     """
     Get current user endpoint
+    Requires authentication and staff/superuser status
     """
     user = request.user
+    
+    # Verify user is staff or superuser
+    if not (user.is_staff or user.is_superuser):
+        return Response({
+            'error': 'Access denied. Only staff members and superusers can access the web application.'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
     return Response({
         'user': {
             'id': user.id,
@@ -324,5 +349,6 @@ def get_current_user(request):
             'first_name': user.first_name,
             'last_name': user.last_name,
             'is_superuser': user.is_superuser,
+            'is_staff': user.is_staff,
         },
     }, status=status.HTTP_200_OK)
