@@ -85,7 +85,7 @@ class AMCViewSet(viewsets.ModelViewSet):
         - search: Search by AMC number or client name (case-insensitive partial match)
         
         **Filtering Options:**
-        - status: Filter by AMC status (Pending, Active, Expired, Canceled)
+        - status: Filter by AMC status (Active, Expired, Canceled)
         - billing_cycle: Filter by billing cycle (Monthly, Quarterly, Half-yearly, Yearly)
         - expiring_days: Filter AMCs expiring within specified days (7, 15, or 30 days)
         
@@ -110,7 +110,7 @@ class AMCViewSet(viewsets.ModelViewSet):
             openapi.Parameter(
                 'status',
                 openapi.IN_QUERY,
-                description='Filter by status (Pending, Active, Expired, Canceled)',
+                description='Filter by status (Active, Expired, Canceled)',
                 type=openapi.TYPE_STRING,
                 required=False
             ),
@@ -182,7 +182,7 @@ class AMCViewSet(viewsets.ModelViewSet):
         - start_date: Start date of the AMC
         - end_date: End date of the AMC
         - billing_cycle: Billing cycle (Monthly, Quarterly, Half-yearly, Yearly)
-        - status: AMC status (Pending, Active, Expired, Canceled)
+        - status: AMC status (Active, Expired, Canceled)
         
         **Optional Fields:**
         - notes: Additional notes or description

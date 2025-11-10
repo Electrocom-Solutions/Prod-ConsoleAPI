@@ -4,7 +4,6 @@ from django.contrib.auth.models import User
 
 class AMC(models.Model):
     class Status(models.TextChoices):
-        PENDING = "Pending", "Pending"
         ACTIVE = "Active", "Active"
         EXPIRED = "Expired", "Expired"
         CANCELED = "Canceled", "Canceled"
@@ -20,7 +19,7 @@ class AMC(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     start_date = models.DateField()
     end_date = models.DateField()
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     billing_cycle = models.CharField(max_length=20, choices=BillingCycle.choices)
     notes = models.TextField(blank=True, null=True)
 
