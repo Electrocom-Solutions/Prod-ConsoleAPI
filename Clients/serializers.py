@@ -242,9 +242,11 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from django.db import transaction
         
-        # Extract user fields (first_name, last_name, email)
+        # Extract user fields (first_name, email)
+        # Client Name -> first_name in User model (NOT split into first_name and last_name)
         first_name = validated_data.pop('first_name', '')
-        last_name = validated_data.pop('last_name', '')
+        # last_name is not used - Client Name goes to first_name only
+        last_name = ''  # Set to empty string as per user requirement
         email = validated_data.pop('email', '')
         
         # Extract file uploads
@@ -301,11 +303,12 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 )
             else:
                 # Update existing profile's user and profile fields if provided
+                # Client Name -> first_name in User model (NOT split into first_name and last_name)
                 if profile and profile.user:
                     if first_name:
                         profile.user.first_name = first_name
-                    if last_name:
-                        profile.user.last_name = last_name
+                    # Always set last_name to empty string as per user requirement
+                    profile.user.last_name = ''
                     if email:
                         profile.user.email = email
                     profile.user.save()
@@ -343,13 +346,14 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         
         # CRITICAL: Check if user fields were provided BEFORE popping
         # This allows us to distinguish between "field not sent" (not in dict) and "field sent as empty" (empty string)
+        # Client Name -> first_name in User model (NOT split into first_name and last_name)
         first_name_provided = 'first_name' in validated_data
-        last_name_provided = 'last_name' in validated_data
         email_provided = 'email' in validated_data
         
-        # Extract user fields (first_name, last_name, email)
+        # Extract user fields (first_name, email)
         first_name = validated_data.pop('first_name', None)
-        last_name = validated_data.pop('last_name', None)
+        # last_name is not used - Client Name goes to first_name only
+        last_name = ''  # Set to empty string as per user requirement
         email = validated_data.pop('email', None)
         
         # Extract file uploads
@@ -382,13 +386,13 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         
         with transaction.atomic():
             # Update profile user info if provided
-            # CRITICAL: Update first_name and last_name even if empty strings to allow clearing them
+            # CRITICAL: Client Name -> first_name in User model (NOT split into first_name and last_name)
             if instance.profile and instance.profile.user:
                 user_obj = instance.profile.user
                 if first_name_provided:
                     user_obj.first_name = first_name if first_name is not None else ''
-                if last_name_provided:
-                    user_obj.last_name = last_name if last_name is not None else ''
+                # Always set last_name to empty string as per user requirement
+                user_obj.last_name = ''
                 if email_provided:
                     user_obj.email = email if email is not None else ''
                 user_obj.save()
