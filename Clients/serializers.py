@@ -31,6 +31,12 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     pan_card_url = serializers.SerializerMethodField()
     email = serializers.EmailField()
     phone_number = serializers.CharField()
+    # Address fields from Profile model
+    address = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
+    state = serializers.SerializerMethodField()
+    pin_code = serializers.SerializerMethodField()
+    country = serializers.SerializerMethodField()
     
     class Meta:
         model = Client
@@ -38,7 +44,8 @@ class ClientDetailSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
             'photo', 'photo_url', 'date_of_birth', 'gender', 'aadhar_number', 'pan_number',
             'aadhar_card_url', 'pan_card_url', 'designation', 'joining_date', 'monthly_salary', 'notes',
-            'profile', 'created_at', 'updated_at', 'created_by', 'updated_by'
+            'profile', 'primary_contact_name', 'address', 'city', 'state', 'pin_code', 'country',
+            'created_at', 'updated_at', 'created_by', 'updated_by'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
     
@@ -67,6 +74,26 @@ class ClientDetailSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.profile.pan_card.url)
             return obj.profile.pan_card.url
         return None
+    
+    def get_address(self, obj):
+        """Get address from profile"""
+        return obj.profile.address if obj.profile else None
+    
+    def get_city(self, obj):
+        """Get city from profile"""
+        return obj.profile.city if obj.profile else None
+    
+    def get_state(self, obj):
+        """Get state from profile"""
+        return obj.profile.state if obj.profile else None
+    
+    def get_pin_code(self, obj):
+        """Get pin_code from profile"""
+        return obj.profile.pin_code if obj.profile else None
+    
+    def get_country(self, obj):
+        """Get country from profile"""
+        return obj.profile.country if obj.profile else None
 
 
 class ClientCreateUpdateSerializer(serializers.ModelSerializer):
@@ -220,12 +247,22 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         date_of_birth = validated_data.pop('date_of_birth', None)
         gender = validated_data.pop('gender', None)
         
+        # CRITICAL: Check if address fields were provided BEFORE popping
+        # This allows us to distinguish between "field not sent" (not in dict) and "field sent as empty" (empty string)
+        address_provided = 'address' in validated_data
+        city_provided = 'city' in validated_data
+        state_provided = 'state' in validated_data
+        pin_code_provided = 'pin_code' in validated_data
+        country_provided = 'country' in validated_data
+        primary_contact_name_provided = 'primary_contact_name' in validated_data
+        
         # Extract address fields from validated_data as they belong to Profile
         address = validated_data.pop('address', None)
         city = validated_data.pop('city', None)
         state = validated_data.pop('state', None)
         pin_code = validated_data.pop('pin_code', None)
         country = validated_data.pop('country', None)
+        primary_contact_name = validated_data.pop('primary_contact_name', None)
         
         user = self.context['request'].user
         validated_data['updated_by'] = user if user.is_authenticated else None
@@ -254,19 +291,26 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     profile_obj.date_of_birth = date_of_birth
                 if gender is not None:
                     profile_obj.gender = gender
-                if address is not None:
-                    profile_obj.address = address
-                if city is not None:
-                    profile_obj.city = city
-                if state is not None:
-                    profile_obj.state = state
-                if pin_code is not None:
-                    profile_obj.pin_code = pin_code
-                if country is not None:
-                    profile_obj.country = country
+                # CRITICAL: Update address fields if they were provided (even if empty strings)
+                # This allows clearing fields by sending empty strings
+                if address_provided:
+                    profile_obj.address = address if address is not None else ''
+                if city_provided:
+                    profile_obj.city = city if city is not None else ''
+                if state_provided:
+                    profile_obj.state = state if state is not None else ''
+                if pin_code_provided:
+                    profile_obj.pin_code = pin_code if pin_code is not None else ''
+                if country_provided:
+                    profile_obj.country = country if country is not None else ''
                 user = self.context['request'].user
                 profile_obj.updated_by = user if user.is_authenticated else None
                 profile_obj.save()
+            
+            # CRITICAL: Update primary_contact_name on Client model if provided
+            # This field is on the Client model, not Profile
+            if primary_contact_name_provided:
+                instance.primary_contact_name = primary_contact_name if primary_contact_name is not None else ''
             
             return super().update(instance, validated_data)
 
