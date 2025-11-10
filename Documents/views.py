@@ -518,6 +518,176 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
             )
     
     @swagger_auto_schema(
+        operation_id='document_preview_version',
+        operation_summary="Preview Specific Version",
+        operation_description="""
+        Preview a specific version of a document template in the browser (inline display).
+        
+        **What it does:**
+        - Validates that the version belongs to the specified template
+        - Retrieves the file associated with that version
+        - Returns the file with inline content disposition for browser preview
+        
+        **Use Case:**
+        Use this endpoint to display PDFs in an iframe or embed tag for preview purposes.
+        The file is served with proper headers for inline display.
+        
+        **Path Parameters:**
+        - template_id: ID of the template
+        - version_id: ID of the specific version to preview
+        """,
+        tags=['Document Management'],
+        manual_parameters=[
+            openapi.Parameter(
+                'version_id',
+                openapi.IN_PATH,
+                description='Version ID to preview',
+                type=openapi.TYPE_INTEGER,
+                required=True
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="File preview (inline)",
+                schema=openapi.Schema(type=openapi.TYPE_FILE)
+            ),
+            404: openapi.Response(description="Version not found")
+        }
+    )
+    @action(detail=True, methods=['get'], url_path='preview-version/(?P<version_id>[0-9]+)')
+    def preview_version(self, request, pk=None, version_id=None):
+        """Preview a specific document version (inline display for iframe)"""
+        try:
+            version = DocumentTemplateVersion.objects.select_related('template').get(
+                id=version_id,
+                template_id=pk
+            )
+            
+            if not version.file:
+                return Response(
+                    {'error': 'File not found for this version'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Determine content type
+            if version.file_type == 'pdf':
+                content_type = 'application/pdf'
+            elif version.file_type == 'docx':
+                content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            else:
+                content_type = 'application/octet-stream'
+            
+            # Get file extension
+            file_extension = os.path.splitext(version.file.name)[1] or f'.{version.file_type}'
+            filename = f"{version.template.title}_v{version.version_number}{file_extension}"
+            
+            # Create file response with inline disposition for preview
+            response = FileResponse(
+                version.file.open('rb'),
+                content_type=content_type
+            )
+            # Use inline instead of attachment for preview
+            response['Content-Disposition'] = f'inline; filename="{quote(filename)}"'
+            # Add CORS headers if needed
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Allow-Methods'] = 'GET'
+            response['Access-Control-Allow-Headers'] = 'Content-Type'
+            return response
+            
+        except DocumentTemplateVersion.DoesNotExist:
+            return Response(
+                {'error': 'Version not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error previewing file: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='document_preview_published',
+        operation_summary="Preview Published Version",
+        operation_description="""
+        Preview the currently published (active) version of a document template in the browser.
+        
+        **What it does:**
+        - Finds the template by ID
+        - Retrieves the version marked as published (is_published=True)
+        - Returns the file with inline content disposition for browser preview
+        
+        **Use Case:**
+        Use this endpoint to display the published PDF in an iframe or embed tag for preview.
+        The file is served with proper headers for inline display.
+        
+        **Path Parameters:**
+        - template_id: ID of the template whose published version you want to preview
+        """,
+        tags=['Document Management'],
+        responses={
+            200: openapi.Response(
+                description="File preview (inline)",
+                schema=openapi.Schema(type=openapi.TYPE_FILE)
+            ),
+            404: openapi.Response(description="Published version not found")
+        }
+    )
+    @action(detail=True, methods=['get'], url_path='preview-published')
+    def preview_published(self, request, pk=None):
+        """Preview the published version of a document template (inline display for iframe)"""
+        try:
+            template = DocumentTemplate.objects.get(pk=pk)
+            version = template.versions.filter(is_published=True).first()
+            
+            if not version:
+                return Response(
+                    {'error': 'No published version found for this template'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            if not version.file:
+                return Response(
+                    {'error': 'File not found for this version'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Determine content type
+            if version.file_type == 'pdf':
+                content_type = 'application/pdf'
+            elif version.file_type == 'docx':
+                content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            else:
+                content_type = 'application/octet-stream'
+            
+            # Get file extension
+            file_extension = os.path.splitext(version.file.name)[1] or f'.{version.file_type}'
+            filename = f"{template.title}_v{version.version_number}{file_extension}"
+            
+            # Create file response with inline disposition for preview
+            response = FileResponse(
+                version.file.open('rb'),
+                content_type=content_type
+            )
+            # Use inline instead of attachment for preview
+            response['Content-Disposition'] = f'inline; filename="{quote(filename)}"'
+            # Add CORS headers if needed
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Allow-Methods'] = 'GET'
+            response['Access-Control-Allow-Headers'] = 'Content-Type'
+            return response
+            
+        except DocumentTemplate.DoesNotExist:
+            return Response(
+                {'error': 'Template not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error previewing file: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
         operation_id='document_download_version_direct',
         operation_summary="Download Version by Version ID",
         operation_description="""
