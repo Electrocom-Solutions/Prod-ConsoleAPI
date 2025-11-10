@@ -315,9 +315,10 @@ class TenderViewSet(viewsets.ModelViewSet):
         - pending_emd_amount: Total pending EMD amount (₹)
         
         **Pending EMD Calculation:**
-        - Pending EMDs are tenders in "Closed" or "Lost" status
+        - Pending EMDs are tenders in "Closed" or "Lost" status AND emd_collected=False
         - Closed tenders: pending amount = Security Deposit 1 + Security Deposit 2
         - Lost tenders: pending amount = Security Deposit 1 only
+        - Only counts tenders where EMD has not been collected yet
         
         **Use Case:**
         Use this endpoint to populate dashboard tiles showing key metrics for tender management.
@@ -360,26 +361,32 @@ class TenderViewSet(viewsets.ModelViewSet):
         )['total'] or 0
         
         # Pending EMDs: Tenders in Closed or Lost status AND EMD not collected
+        # Prefetch deposits to avoid N+1 queries
         pending_emd_tenders = Tender.objects.filter(
             status__in=[Tender.Status.CLOSED, Tender.Status.LOST],
             emd_collected=False
-        )
+        ).prefetch_related('deposits')
         pending_emds_count = pending_emd_tenders.count()
         
         # Calculate pending EMD amount
+        # For Lost: collect only SD1 (EMD_Security1)
+        # For Closed: collect SD1 + SD2 (EMD_Security1 + EMD_Security2)
         pending_emd_amount = 0.0
         for tender in pending_emd_tenders:
+            # Get all deposits for this tender (already prefetched)
+            deposits = list(tender.deposits.all())
+            
             if tender.status == Tender.Status.CLOSED:
                 # Closed: collect whole EMD (Security Deposit 1 + Security Deposit 2)
-                total = tender.deposits.aggregate(total=Sum('dd_amount'))['total']
-                pending_emd_amount += float(total) if total else 0.0
+                # Sum all deposits for this tender
+                for deposit in deposits:
+                    pending_emd_amount += float(deposit.dd_amount)
             elif tender.status == Tender.Status.LOST:
-                # Lost: collect only Security Deposit 1
-                deposit1 = tender.deposits.filter(
-                    deposit_type=TenderDeposit.DepositType.EMD_SECURITY1
-                ).first()
-                if deposit1:
-                    pending_emd_amount += float(deposit1.dd_amount)
+                # Lost: collect only Security Deposit 1 (EMD_Security1)
+                for deposit in deposits:
+                    if deposit.deposit_type == TenderDeposit.DepositType.EMD_SECURITY1:
+                        pending_emd_amount += float(deposit.dd_amount)
+                        break  # Only need SD1 for Lost tenders
         
         data = {
             'total_tenders': total_tenders,
