@@ -56,8 +56,11 @@ class TenderViewSet(viewsets.ModelViewSet):
         # Filter by pending EMDs
         pending_emds = self.request.query_params.get('pending_emds', None)
         if pending_emds and pending_emds.lower() in ['true', '1', 'yes']:
-            # Pending EMDs: Tenders in Closed or Lost status
-            queryset = queryset.filter(status__in=[Tender.Status.CLOSED, Tender.Status.LOST])
+            # Pending EMDs: Tenders in Closed or Lost status AND EMD not collected
+            queryset = queryset.filter(
+                status__in=[Tender.Status.CLOSED, Tender.Status.LOST],
+                emd_collected=False
+            )
         
         return queryset.order_by('-created_at')
     
@@ -356,9 +359,10 @@ class TenderViewSet(viewsets.ModelViewSet):
             total=Coalesce(Sum('estimated_value'), 0)
         )['total'] or 0
         
-        # Pending EMDs: Tenders in Closed or Lost status
+        # Pending EMDs: Tenders in Closed or Lost status AND EMD not collected
         pending_emd_tenders = Tender.objects.filter(
-            status__in=[Tender.Status.CLOSED, Tender.Status.LOST]
+            status__in=[Tender.Status.CLOSED, Tender.Status.LOST],
+            emd_collected=False
         )
         pending_emds_count = pending_emd_tenders.count()
         
@@ -562,3 +566,96 @@ class TenderViewSet(viewsets.ModelViewSet):
         
         serializer = ActivityFeedSerializer(activities, many=True, context={'request': request})
         return Response({'activities': serializer.data}, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        operation_id='tender_mark_emd_collected',
+        operation_summary="Mark EMD as Collected",
+        operation_description="""
+        Mark EMD as collected for a tender. This should only be used for tenders with status "Lost" or "Closed".
+        
+        **What it does:**
+        - Sets emd_collected to True
+        - Records the collection date (current date)
+        - Records the user who marked it as collected
+        - Creates an activity log entry
+        
+        **Use Case:**
+        Use this endpoint when EMD has been collected from the client for a Lost or Closed tender.
+        """,
+        tags=['Tender Management'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'emd_collected_date': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_DATE,
+                    description='Date when EMD was collected (optional, defaults to today)'
+                )
+            },
+            required=[]
+        ),
+        responses={
+            200: openapi.Response(
+                description="EMD marked as collected successfully",
+                schema=TenderDetailSerializer()
+            ),
+            400: openapi.Response(description="Invalid request - tender status must be Lost or Closed"),
+            404: openapi.Response(description="Tender not found")
+        }
+    )
+    @action(detail=True, methods=['post'], url_path='mark-emd-collected')
+    def mark_emd_collected(self, request, pk=None):
+        """Mark EMD as collected for a tender"""
+        from django.utils import timezone
+        
+        tender = self.get_object()
+        
+        # Validate that tender status is Lost or Closed
+        if tender.status not in [Tender.Status.LOST, Tender.Status.CLOSED]:
+            return Response(
+                {'error': 'EMD can only be marked as collected for tenders with status "Lost" or "Closed".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate that EMD is not already collected
+        if tender.emd_collected:
+            return Response(
+                {'error': 'EMD has already been marked as collected for this tender.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get collection date from request or use today
+        emd_collected_date = request.data.get('emd_collected_date', None)
+        if emd_collected_date:
+            from django.utils.dateparse import parse_date
+            try:
+                emd_collected_date = parse_date(emd_collected_date)
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'Invalid date format for emd_collected_date. Use YYYY-MM-DD format.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            emd_collected_date = timezone.now().date()
+        
+        user = request.user if request.user.is_authenticated else None
+        
+        # Update tender
+        tender.emd_collected = True
+        tender.emd_collected_date = emd_collected_date
+        tender.emd_collected_by = user
+        tender.updated_by = user
+        tender.save()
+        
+        # Create activity log
+        ActivityLog.objects.create(
+            entity_type=ActivityLog.EntityType.TENDER,
+            entity_id=tender.id,
+            action=ActivityLog.Action.UPDATED,
+            description=f"EMD marked as collected for tender {tender.name} on {emd_collected_date}",
+            created_by=user
+        )
+        
+        # Return updated tender
+        serializer = TenderDetailSerializer(tender, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)

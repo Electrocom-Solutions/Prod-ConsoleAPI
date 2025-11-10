@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 
 class Tender(models.Model):
     class Status(models.TextChoices):
+        DRAFT = "Draft", "Draft"
         FILED = "Filed", "Filed"
         AWARDED = "Awarded", "Awarded"
         LOST = "Lost", "Lost"
@@ -17,6 +18,9 @@ class Tender(models.Model):
     end_date = models.DateField(blank=True, null=True)
     estimated_value = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.FILED)
+    emd_collected = models.BooleanField(default=False, help_text="Whether EMD has been collected for this tender")
+    emd_collected_date = models.DateField(blank=True, null=True, help_text="Date when EMD was collected")
+    emd_collected_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="tenders_emd_collected", blank=True, null=True, help_text="User who marked EMD as collected")
 
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="tenders_created", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -26,7 +26,8 @@ class TenderListSerializer(serializers.ModelSerializer):
         model = Tender
         fields = [
             'id', 'name', 'reference_number', 'filed_date', 'start_date',
-            'end_date', 'estimated_value', 'status', 'total_emd_cost',
+            'end_date', 'estimated_value', 'status', 'emd_collected',
+            'emd_collected_date', 'total_emd_cost',
             'security_deposit_1', 'security_deposit_2', 'pending_emd_amount',
             'has_pending_emd', 'created_at'
         ]
@@ -50,7 +51,9 @@ class TenderListSerializer(serializers.ModelSerializer):
         return float(deposit.dd_amount) if deposit else 0.0
     
     def get_pending_emd_amount(self, obj):
-        """Calculate pending EMD amount based on tender status"""
+        """Calculate pending EMD amount based on tender status (only if not collected)"""
+        if obj.emd_collected:
+            return 0.0
         if obj.status == Tender.Status.CLOSED:
             # Closed: collect whole EMD (Security Deposit 1 + Security Deposit 2)
             return self.get_total_emd_cost(obj)
@@ -60,8 +63,8 @@ class TenderListSerializer(serializers.ModelSerializer):
         return 0.0
     
     def get_has_pending_emd(self, obj):
-        """Check if tender has pending EMD"""
-        return obj.status in [Tender.Status.CLOSED, Tender.Status.LOST]
+        """Check if tender has pending EMD (Lost/Closed status and EMD not collected)"""
+        return obj.status in [Tender.Status.CLOSED, Tender.Status.LOST] and not obj.emd_collected
 
 
 class TenderDocumentSerializer(serializers.ModelSerializer):
@@ -116,11 +119,12 @@ class TenderDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'reference_number', 'description', 'filed_date',
             'start_date', 'end_date', 'estimated_value', 'status',
+            'emd_collected', 'emd_collected_date', 'emd_collected_by',
             'total_emd_cost', 'security_deposit_1', 'security_deposit_2',
             'pending_emd_amount', 'deposits', 'documents', 'activity_feed',
             'created_at', 'updated_at', 'created_by', 'updated_by'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
+        read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by', 'emd_collected_by']
     
     def get_total_emd_cost(self, obj):
         """Calculate total EMD cost"""
@@ -138,7 +142,9 @@ class TenderDetailSerializer(serializers.ModelSerializer):
         return float(deposit.dd_amount) if deposit else 0.0
     
     def get_pending_emd_amount(self, obj):
-        """Calculate pending EMD amount"""
+        """Calculate pending EMD amount (only if not collected)"""
+        if obj.emd_collected:
+            return 0.0
         if obj.status == Tender.Status.CLOSED:
             return self.get_total_emd_cost(obj)
         elif obj.status == Tender.Status.LOST:
