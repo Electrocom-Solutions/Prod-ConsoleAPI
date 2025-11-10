@@ -32,18 +32,42 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """Return notifications for the current user only with search and filters"""
+        """Return notifications for the current user with search and filters"""
         if not self.request.user.is_authenticated:
             # During schema generation, return empty queryset
             return Notification.objects.none()
         
-        queryset = Notification.objects.filter(
-            recipient=self.request.user
-        ).select_related('created_by', 'recipient')
+        # Check if user wants to see notifications they sent (owner view)
+        show_sent_by_me = self.request.query_params.get('show_sent_by_me', None)
+        show_scheduled = self.request.query_params.get('show_scheduled', None)
         
-        # Only show notifications that have been sent (sent_at is not None)
-        # Scheduled notifications (sent_at=None) should not appear until they're actually sent
-        queryset = queryset.filter(sent_at__isnull=False)
+        if show_sent_by_me and show_sent_by_me.lower() == 'true':
+            # Show notifications sent by the current user (owner view)
+            # This shows all notifications created by the owner, regardless of recipient
+            queryset = Notification.objects.filter(
+                created_by=self.request.user
+            ).select_related('created_by', 'recipient')
+            
+            # Filter by scheduled status
+            if show_scheduled and show_scheduled.lower() == 'true':
+                # Show scheduled notifications (not yet sent)
+                queryset = queryset.filter(sent_at__isnull=True, scheduled_at__isnull=False)
+            else:
+                # Show sent notifications (default behavior)
+                queryset = queryset.filter(sent_at__isnull=False)
+        else:
+            # Default: Show notifications received by the current user
+            queryset = Notification.objects.filter(
+                recipient=self.request.user
+            ).select_related('created_by', 'recipient')
+            
+            # Filter by scheduled status
+            if show_scheduled and show_scheduled.lower() == 'true':
+                # Show scheduled notifications (not yet sent)
+                queryset = queryset.filter(sent_at__isnull=True, scheduled_at__isnull=False)
+            else:
+                # Show sent notifications (default behavior)
+                queryset = queryset.filter(sent_at__isnull=False)
         
         # Search by title or message
         search = self.request.query_params.get('search', None)
@@ -58,12 +82,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
         if type_filter:
             queryset = queryset.filter(type=type_filter)
         
-        # Filter by read status
+        # Filter by read status (only for sent notifications, not scheduled, and only for received notifications)
         is_read_filter = self.request.query_params.get('is_read', None)
-        if is_read_filter is not None:
+        if is_read_filter is not None and not (show_scheduled and show_scheduled.lower() == 'true') and not (show_sent_by_me and show_sent_by_me.lower() == 'true'):
             is_read = is_read_filter.lower() == 'true'
             queryset = queryset.filter(is_read=is_read)
         
+        # Order by scheduled_at for scheduled notifications, created_at for sent notifications
+        if show_scheduled and show_scheduled.lower() == 'true':
+            return queryset.order_by('scheduled_at')
         return queryset.order_by('-created_at')
     
     def get_serializer_class(self):
@@ -96,12 +123,16 @@ class NotificationViewSet(viewsets.ModelViewSet):
         
         **Filtering Options:**
         - type: Filter by notification type (Task, AMC, Tender, Payroll, System, Other)
-        - is_read: Filter by read status (true/false)
+        - is_read: Filter by read status (true/false) - only for sent notifications and received notifications
+        - show_scheduled: Show scheduled notifications instead of sent ones (true/false)
+        - show_sent_by_me: Show notifications sent by the current user (owner view) (true/false)
         
         **Query Parameters:**
         - search (optional): Search by title or message
         - type (optional): Filter by notification type
-        - is_read (optional): Filter by read status (true/false)
+        - is_read (optional): Filter by read status (true/false) - only for sent notifications and received notifications
+        - show_scheduled (optional): Set to 'true' to show scheduled notifications instead of sent ones
+        - show_sent_by_me (optional): Set to 'true' to show notifications sent by the current user (owner view)
         
         **Note:**
         Only notifications for the authenticated user are returned.

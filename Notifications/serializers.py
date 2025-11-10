@@ -9,6 +9,7 @@ from .models import Notification, EmailTemplate
 class NotificationListSerializer(serializers.ModelSerializer):
     """Serializer for listing notifications"""
     created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    recipient_username = serializers.CharField(source='recipient.username', read_only=True)
     type_display = serializers.CharField(source='get_type_display', read_only=True)
     channel_display = serializers.CharField(source='get_channel_display', read_only=True)
     
@@ -16,7 +17,8 @@ class NotificationListSerializer(serializers.ModelSerializer):
         model = Notification
         fields = [
             'id', 'title', 'message', 'type', 'type_display', 'channel', 'channel_display',
-            'is_read', 'scheduled_at', 'sent_at', 'created_at', 'created_by', 'created_by_username'
+            'is_read', 'scheduled_at', 'sent_at', 'created_at', 'created_by', 'created_by_username',
+            'recipient', 'recipient_username'
         ]
         read_only_fields = ['created_at', 'sent_at', 'created_by']
 
@@ -194,25 +196,41 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
                 logger.error(f"Error scheduling notification task: {str(e)}", exc_info=True)
                 raise serializers.ValidationError(f"Failed to schedule notification: {str(e)}")
             
-            # Create a temporary notification object for the API response
-            # This is only used for serialization - it won't be saved to the database
-            # The actual notifications will be created by the scheduled Celery task at the scheduled time
-            # Use the creator as a temporary recipient for the response object
-            temp_notification = Notification(
-                recipient=request_user if request_user.is_authenticated else None,
-                title=title,
-                message=message,
-                type=notification_type,
-                channel=channel,
-                scheduled_at=scheduled_at,  # Store original timezone-aware datetime
-                sent_at=None,
-                created_by=request_user if request_user.is_authenticated else None
-            )
-            # Set a temporary ID so the serializer can work (it won't be saved)
-            temp_notification.id = 0  # Temporary ID for response
-            # Set created_at manually for the response
-            temp_notification.created_at = current_time
-            return temp_notification
+            # Create scheduled notifications for all employees NOW (so they can be viewed)
+            # These will be marked as sent when the Celery task runs
+            employees = Employee.objects.select_related('profile', 'profile__user').all()
+            notifications_created = []
+            
+            for employee in employees:
+                if employee.profile and employee.profile.user:
+                    user = employee.profile.user
+                    notification = Notification.objects.create(
+                        recipient=user,
+                        title=title,
+                        message=message,
+                        type=notification_type,
+                        channel=channel,
+                        scheduled_at=scheduled_at,  # Store original timezone-aware datetime
+                        sent_at=None,  # Not sent yet - will be set when Celery task runs
+                        created_by=request_user if request_user.is_authenticated else None
+                    )
+                    notifications_created.append(notification)
+            
+            # Return the first notification (for API response)
+            if notifications_created:
+                return notifications_created[0]
+            else:
+                # If no employees found, create a notification for the creator
+                return Notification.objects.create(
+                    recipient=request_user if request_user.is_authenticated else None,
+                    title=title,
+                    message=message,
+                    type=notification_type,
+                    channel=channel,
+                    scheduled_at=scheduled_at,  # Store original timezone-aware datetime
+                    sent_at=None,  # Not sent yet - will be set when Celery task runs
+                    created_by=request_user if request_user.is_authenticated else None
+                )
 
 
 # Email Template Serializers

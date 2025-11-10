@@ -526,8 +526,8 @@ def send_scheduled_notification(self, title, message, notification_type, channel
     """
     Send a scheduled notification to all employees at the scheduled time.
     
-    This task is scheduled for a specific date/time and creates notifications
-    for all employees when that time arrives.
+    This task is scheduled for a specific date/time and marks existing scheduled
+    notifications as sent when that time arrives.
     
     Args:
         title: Notification title
@@ -552,36 +552,63 @@ def send_scheduled_notification(self, title, message, notification_type, channel
             except User.DoesNotExist:
                 logger.warning(f"User {created_by_id} not found for scheduled notification")
         
-        # Get all employees (users linked to Employee model)
-        employees = Employee.objects.select_related('profile', 'profile__user').all()
+        # Find existing scheduled notifications that match this title, message, type, and channel
+        # and haven't been sent yet (sent_at is None)
+        scheduled_notifications = Notification.objects.filter(
+            title=title,
+            message=message,
+            type=notification_type,
+            channel=channel,
+            scheduled_at__isnull=False,
+            sent_at__isnull=True,
+            created_by_id=created_by_id if created_by_id else None
+        )
         
-        notifications_created = []
+        notifications_sent = 0
         errors = []
         
-        for employee in employees:
-            if employee.profile and employee.profile.user:
-                user = employee.profile.user
-                try:
-                    notification = Notification.objects.create(
-                        recipient=user,
-                        title=title,
-                        message=message,
-                        type=notification_type,
-                        channel=channel,
-                        scheduled_at=None,  # Not scheduled anymore, being sent now
-                        sent_at=now,  # Mark as sent immediately
-                        created_by=created_by
-                    )
-                    notifications_created.append(notification)
-                    logger.info(f"Created and sent scheduled notification to {user.username}")
-                except Exception as e:
-                    error_msg = f"Error creating notification for {user.username}: {str(e)}"
-                    errors.append(error_msg)
-                    logger.error(error_msg, exc_info=True)
+        # Mark all matching scheduled notifications as sent
+        for notification in scheduled_notifications:
+            try:
+                notification.sent_at = now
+                notification.scheduled_at = None  # Clear scheduled_at since it's being sent now
+                notification.save()
+                notifications_sent += 1
+                logger.info(f"Marked scheduled notification {notification.id} as sent for {notification.recipient.username}")
+            except Exception as e:
+                error_msg = f"Error marking notification {notification.id} as sent: {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg, exc_info=True)
+        
+        # If no scheduled notifications found, create new ones (fallback for old scheduled tasks)
+        if notifications_sent == 0:
+            logger.warning(f"No scheduled notifications found matching criteria. Creating new notifications as fallback.")
+            employees = Employee.objects.select_related('profile', 'profile__user').all()
+            
+            for employee in employees:
+                if employee.profile and employee.profile.user:
+                    user = employee.profile.user
+                    try:
+                        notification = Notification.objects.create(
+                            recipient=user,
+                            title=title,
+                            message=message,
+                            type=notification_type,
+                            channel=channel,
+                            scheduled_at=None,  # Not scheduled anymore, being sent now
+                            sent_at=now,  # Mark as sent immediately
+                            created_by=created_by
+                        )
+                        notifications_sent += 1
+                        logger.info(f"Created and sent scheduled notification to {user.username} (fallback)")
+                    except Exception as e:
+                        error_msg = f"Error creating notification for {user.username}: {str(e)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg, exc_info=True)
         
         result = {
             'status': 'success',
-            'notifications_created': len(notifications_created),
+            'notifications_sent': notifications_sent,
             'errors': errors if errors else None,
             'timestamp': str(now)
         }
