@@ -46,7 +46,7 @@ class DashboardViewSet(viewsets.ViewSet):
         for amc in expiring_amcs:
             days_until_expiry = (amc.end_date - today).days
             result.append({
-                'client_name': amc.client.name,
+                'client_name': amc.client.full_name,
                 'amc_expiry_date': amc.end_date,
                 'expiry_count_days': days_until_expiry,
                 'amc_number': amc.amc_number

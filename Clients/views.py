@@ -39,14 +39,15 @@ class ClientViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         
-        # Search by name (first_name, last_name, or legacy name field)
+        # Search by name (first_name, last_name from profile.user) or phone_number
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
-                Q(first_name__icontains=search) |
-                Q(last_name__icontains=search) |
-                Q(name__icontains=search) |
-                Q(phone_number__icontains=search)
+                Q(profile__user__first_name__icontains=search) |
+                Q(profile__user__last_name__icontains=search) |
+                Q(profile__user__email__icontains=search) |
+                Q(phone_number__icontains=search) |
+                Q(primary_contact_name__icontains=search)
             )
         
         # Filter by has_active_amc

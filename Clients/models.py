@@ -13,21 +13,12 @@ class Client(models.Model):
         COMPUTER_OPERATOR = "Computer Operator", "Computer Operator"
     
     profile = models.ForeignKey("Profiles.Profile", on_delete=models.CASCADE, related_name="clients")
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    email = models.EmailField(blank=True, null=True)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     photo = models.ImageField(upload_to="clients/photos/", blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
     gender = models.CharField(max_length=20, choices=Gender.choices, blank=True, null=True)
     aadhar_number = models.CharField(max_length=20, blank=True, null=True)
     pan_number = models.CharField(max_length=20, blank=True, null=True)
-    designation = models.CharField(max_length=50, choices=Designation.choices, blank=True, null=True)
-    joining_date = models.DateField(blank=True, null=True)
-    monthly_salary = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
-    
-    # Legacy fields for backward compatibility
-    name = models.CharField(max_length=255, blank=True, null=True)
     primary_contact_name = models.CharField(max_length=255, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
@@ -37,14 +28,31 @@ class Client(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        full_name = f"{self.first_name} {self.last_name}".strip()
-        return full_name if full_name else self.name or f"Client {self.id}"
+        """Return client name from profile.user"""
+        if self.profile and self.profile.user:
+            first_name = self.profile.user.first_name or ""
+            last_name = self.profile.user.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                return full_name
+            # Fallback to username if name is empty
+            if self.profile.user.username:
+                return self.profile.user.username
+        return f"Client {self.id}"
     
     @property
     def full_name(self):
-        """Return full name"""
-        full_name = f"{self.first_name} {self.last_name}".strip()
-        return full_name if full_name else self.name or ""
+        """Return full name from profile.user"""
+        if self.profile and self.profile.user:
+            first_name = self.profile.user.first_name or ""
+            last_name = self.profile.user.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                return full_name
+            # Fallback to username if name is empty
+            if self.profile.user.username:
+                return self.profile.user.username
+        return ""
 
 
 class Firm(models.Model):

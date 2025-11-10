@@ -6,8 +6,10 @@ from Profiles.models import Profile
 
 
 class ClientListSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(read_only=True)
-    email = serializers.EmailField(read_only=True)
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    full_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
     phone_number = serializers.CharField(read_only=True)
     has_active_amc = serializers.SerializerMethodField()
     
@@ -19,18 +21,51 @@ class ClientListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at']
     
+    def get_first_name(self, obj):
+        """Get first name from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.first_name or ""
+        return ""
+    
+    def get_last_name(self, obj):
+        """Get last name from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.last_name or ""
+        return ""
+    
+    def get_full_name(self, obj):
+        """Get full name from profile.user"""
+        if obj.profile and obj.profile.user:
+            first_name = obj.profile.user.first_name or ""
+            last_name = obj.profile.user.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                return full_name
+            # Fallback to username if name is empty
+            if obj.profile.user.username:
+                return obj.profile.user.username
+        return ""
+    
+    def get_email(self, obj):
+        """Get email from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.email or ""
+        return ""
+    
     def get_has_active_amc(self, obj):
         """Check if client has active AMC"""
         return obj.amcs.filter(status=AMC.Status.ACTIVE).exists()
 
 
 class ClientDetailSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(read_only=True)
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    full_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    phone_number = serializers.CharField(read_only=True)
     photo_url = serializers.SerializerMethodField()
     aadhar_card_url = serializers.SerializerMethodField()
     pan_card_url = serializers.SerializerMethodField()
-    email = serializers.EmailField()
-    phone_number = serializers.CharField()
     # Address fields from Profile model
     address = serializers.SerializerMethodField()
     city = serializers.SerializerMethodField()
@@ -43,11 +78,42 @@ class ClientDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
             'photo', 'photo_url', 'date_of_birth', 'gender', 'aadhar_number', 'pan_number',
-            'aadhar_card_url', 'pan_card_url', 'designation', 'joining_date', 'monthly_salary', 'notes',
-            'profile', 'primary_contact_name', 'address', 'city', 'state', 'pin_code', 'country',
+            'aadhar_card_url', 'pan_card_url', 'primary_contact_name', 'notes',
+            'profile', 'address', 'city', 'state', 'pin_code', 'country',
             'created_at', 'updated_at', 'created_by', 'updated_by'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
+    
+    def get_first_name(self, obj):
+        """Get first name from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.first_name or ""
+        return ""
+    
+    def get_last_name(self, obj):
+        """Get last name from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.last_name or ""
+        return ""
+    
+    def get_full_name(self, obj):
+        """Get full name from profile.user"""
+        if obj.profile and obj.profile.user:
+            first_name = obj.profile.user.first_name or ""
+            last_name = obj.profile.user.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                return full_name
+            # Fallback to username if name is empty
+            if obj.profile.user.username:
+                return obj.profile.user.username
+        return ""
+    
+    def get_email(self, obj):
+        """Get email from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.email or ""
+        return ""
     
     def get_photo_url(self, obj):
         if obj.photo:
@@ -97,7 +163,11 @@ class ClientDetailSerializer(serializers.ModelSerializer):
 
 
 class ClientCreateUpdateSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(read_only=True)
+    first_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    last_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    full_name = serializers.SerializerMethodField()
+    email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     photo_url = serializers.SerializerMethodField()
     aadhar_card_url = serializers.SerializerMethodField()
     pan_card_url = serializers.SerializerMethodField()
@@ -120,10 +190,28 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
             'photo', 'photo_url', 'date_of_birth', 'gender', 'aadhar_number', 'pan_number',
             'aadhar_card', 'pan_card', 'aadhar_card_url', 'pan_card_url',
-            'designation', 'joining_date', 'monthly_salary', 'notes', 'profile',
-            'primary_contact_name', 'address', 'city', 'state', 'pin_code', 'country'
+            'notes', 'profile', 'primary_contact_name', 'address', 'city', 'state', 'pin_code', 'country'
         ]
         read_only_fields = ['id']
+    
+    def get_full_name(self, obj):
+        """Get full name from profile.user"""
+        if obj.profile and obj.profile.user:
+            first_name = obj.profile.user.first_name or ""
+            last_name = obj.profile.user.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                return full_name
+            # Fallback to username if name is empty
+            if obj.profile.user.username:
+                return obj.profile.user.username
+        return ""
+    
+    def get_email(self, obj):
+        """Get email from profile.user"""
+        if obj.profile and obj.profile.user:
+            return obj.profile.user.email or ""
+        return ""
     
     def get_photo_url(self, obj):
         if obj.photo:
@@ -154,6 +242,11 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from django.db import transaction
         
+        # Extract user fields (first_name, last_name, email)
+        first_name = validated_data.pop('first_name', '')
+        last_name = validated_data.pop('last_name', '')
+        email = validated_data.pop('email', '')
+        
         # Extract file uploads
         aadhar_card = validated_data.pop('aadhar_card', None)
         pan_card = validated_data.pop('pan_card', None)
@@ -175,7 +268,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             if not profile:
                 # Create a new user and profile if not provided
-                email = validated_data.get('email', '')
                 phone = validated_data.get('phone_number', '')
                 username = email or f"client_{phone}" or f"client_{Client.objects.count() + 1}"
                 
@@ -189,8 +281,8 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 user = User.objects.create_user(
                     username=username,
                     email=email,
-                    first_name=validated_data.get('first_name', ''),
-                    last_name=validated_data.get('last_name', '')
+                    first_name=first_name or '',
+                    last_name=last_name or ''
                 )
                 
                 # Create profile for the user with file uploads and address
@@ -208,6 +300,16 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     created_by=self.context['request'].user
                 )
             else:
+                # Update existing profile's user and profile fields if provided
+                if profile and profile.user:
+                    if first_name:
+                        profile.user.first_name = first_name
+                    if last_name:
+                        profile.user.last_name = last_name
+                    if email:
+                        profile.user.email = email
+                    profile.user.save()
+                
                 # Update existing profile with file uploads and address if provided
                 if aadhar_card is not None:
                     profile.aadhar_card = aadhar_card
@@ -239,6 +341,17 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         from django.db import transaction
         
+        # CRITICAL: Check if user fields were provided BEFORE popping
+        # This allows us to distinguish between "field not sent" (not in dict) and "field sent as empty" (empty string)
+        first_name_provided = 'first_name' in validated_data
+        last_name_provided = 'last_name' in validated_data
+        email_provided = 'email' in validated_data
+        
+        # Extract user fields (first_name, last_name, email)
+        first_name = validated_data.pop('first_name', None)
+        last_name = validated_data.pop('last_name', None)
+        email = validated_data.pop('email', None)
+        
         # Extract file uploads
         aadhar_card = validated_data.pop('aadhar_card', None)
         pan_card = validated_data.pop('pan_card', None)
@@ -269,16 +382,16 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         
         with transaction.atomic():
             # Update profile user info if provided
-            profile = validated_data.pop('profile', None)
-            if profile and instance.profile and instance.profile.user:
-                user = instance.profile.user
-                if validated_data.get('email'):
-                    user.email = validated_data.get('email', user.email)
-                if validated_data.get('first_name'):
-                    user.first_name = validated_data.get('first_name', user.first_name)
-                if validated_data.get('last_name'):
-                    user.last_name = validated_data.get('last_name', user.last_name)
-                user.save()
+            # CRITICAL: Update first_name and last_name even if empty strings to allow clearing them
+            if instance.profile and instance.profile.user:
+                user_obj = instance.profile.user
+                if first_name_provided:
+                    user_obj.first_name = first_name if first_name is not None else ''
+                if last_name_provided:
+                    user_obj.last_name = last_name if last_name is not None else ''
+                if email_provided:
+                    user_obj.email = email if email is not None else ''
+                user_obj.save()
             
             # Update profile with file uploads and address if provided
             if instance.profile:
@@ -311,6 +424,12 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
             # This field is on the Client model, not Profile
             if primary_contact_name_provided:
                 instance.primary_contact_name = primary_contact_name if primary_contact_name is not None else ''
+            
+            # CRITICAL: Update phone_number on Client model if provided
+            # This field is on the Client model, not Profile
+            if 'phone_number' in validated_data:
+                phone_number = validated_data.get('phone_number')
+                instance.phone_number = phone_number if phone_number is not None else ''
             
             return super().update(instance, validated_data)
 

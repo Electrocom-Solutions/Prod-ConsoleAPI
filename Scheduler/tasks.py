@@ -516,8 +516,9 @@ def _generate_bill_number(amc, period_from):
 
 def _get_client_name(client):
     """Get client name for notification"""
-    full_name = f"{client.first_name} {client.last_name}".strip()
-    return full_name if full_name else client.name or f"Client {client.id}"
+    # Use the full_name property which gets name from profile.user
+    full_name = client.full_name
+    return full_name if full_name else f"Client {client.id}"
 
 
 @shared_task(bind=True, name='Scheduler.tasks.send_scheduled_notifications')
