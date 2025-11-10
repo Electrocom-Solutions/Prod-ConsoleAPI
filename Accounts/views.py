@@ -8,6 +8,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, Sum, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.db import transaction
+from django.http import HttpResponse
 from datetime import date
 from calendar import monthrange
 from decimal import Decimal
@@ -15,6 +16,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 import pandas as pd
 import logging
+import io
 
 from .models import PaymentTracker, BankAccount
 from .serializers import (
@@ -233,6 +235,7 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
         
         **Pagination:**
         Results are paginated (20 items per page by default) and sorted by creation date (newest first).
+        Use the `page` parameter to navigate through pages and `page_size` to control the number of items per page.
         """,
         tags=['Payment Tracking'],
         manual_parameters=[
@@ -255,6 +258,20 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
                 'year',
                 openapi.IN_QUERY,
                 description='Filter by year (YYYY), must be used with month. Defaults to current year if not provided.',
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+            openapi.Parameter(
+                'page',
+                openapi.IN_QUERY,
+                description='Page number (default: 1)',
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+            openapi.Parameter(
+                'page_size',
+                openapi.IN_QUERY,
+                description='Number of items per page (default: 20)',
                 type=openapi.TYPE_INTEGER,
                 required=False
             ),
@@ -486,6 +503,92 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
             logger.error(f"Error processing Excel file: {str(e)}", exc_info=True)
             return Response(
                 {'error': f'Error processing Excel file: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='payment_tracker_download_template',
+        operation_summary="Download Payment Tracker Excel Template",
+        operation_description="""
+        Download an Excel template file for uploading payment tracker data.
+        
+        **What it returns:**
+        - An Excel file (.xlsx) with pre-filled column headers
+        - Sample data row showing the expected format
+        - All required and optional columns clearly labeled
+        
+        **Excel File Format:**
+        The template includes the following columns:
+        - Sr. No. (optional, for reference)
+        - Worker Name (required)
+        - Place Of Work (required)
+        - Mobile Number (required)
+        - Net Salary (required)
+        - Bank Name (optional)
+        - Account Number (optional)
+        - IFSC Code (optional)
+        
+        **Use Case:**
+        Use this endpoint to download a template Excel file that can be filled with payment tracker data and then uploaded using the upload endpoint.
+        """,
+        tags=['Payment Tracking'],
+        responses={
+            200: openapi.Response(
+                description="Excel template file",
+                schema=openapi.Schema(type=openapi.TYPE_FILE)
+            )
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='download-template')
+    def download_template(self, request):
+        """Download Excel template for payment tracker upload"""
+        try:
+            # Create a DataFrame with column headers and sample data
+            columns = [
+                'Sr. No.',
+                'Worker Name',
+                'Place Of Work',
+                'Mobile Number',
+                'Net Salary',
+                'Bank Name',
+                'Account Number',
+                'IFSC Code'
+            ]
+            
+            # Sample data row
+            sample_data = {
+                'Sr. No.': [1],
+                'Worker Name': ['John Doe'],
+                'Place Of Work': ['Construction Site A'],
+                'Mobile Number': ['9876543210'],
+                'Net Salary': [25000],
+                'Bank Name': ['State Bank of India'],
+                'Account Number': ['1234567890123456'],
+                'IFSC Code': ['SBIN0001234']
+            }
+            
+            df = pd.DataFrame(sample_data, columns=columns)
+            
+            # Create Excel file in memory
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Payment Tracker')
+            
+            output.seek(0)
+            
+            # Create HTTP response with Excel file
+            response = HttpResponse(
+                output.read(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="payment_tracker_template.xlsx"'
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating template: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Error generating template: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
