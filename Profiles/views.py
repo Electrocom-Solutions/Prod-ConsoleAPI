@@ -5,11 +5,16 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 from .models import Profile
-from .serializers import CurrentUserProfileSerializer, CurrentUserProfileUpdateSerializer
+from .serializers import (
+    CurrentUserProfileSerializer,
+    CurrentUserProfileUpdateSerializer,
+    ProfileCreateSerializer
+)
 
 
 @swagger_auto_schema(
@@ -219,3 +224,87 @@ def update_current_user_profile(request):
     # Return updated profile
     response_serializer = CurrentUserProfileSerializer(profile, context={'request': request})
     return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_id='create_profile',
+    operation_summary="Create New Profile",
+    operation_description="""
+    Create a new profile with associated user.
+    
+    **Required Fields:**
+    - first_name: First name of the user
+    - email: Email address (must be unique)
+    
+    **Optional Fields:**
+    - last_name: Last name of the user
+    - phone_number: Primary phone number
+    - photo: Profile photo (image file)
+    - date_of_birth: Date of birth
+    - gender: Gender
+    - address: Street address
+    - city: City
+    - state: State
+    - pin_code: Pin code
+    - country: Country
+    - aadhar_number: Aadhar card number
+    - pan_number: PAN card number
+    - aadhar_card: Aadhar card document file
+    - pan_card: PAN card document file
+    
+    **What it does:**
+    - Creates a new User with the provided information
+    - Creates a Profile linked to the User
+    - Creates a primary MobileNumber if phone_number is provided
+    - Returns the created profile with user information
+    
+    **Request:**
+    - Use multipart/form-data for file uploads
+    """,
+    tags=['Profile'],
+    responses={
+        201: openapi.Response(
+            description="Profile created successfully",
+            schema=CurrentUserProfileSerializer()
+        ),
+        400: openapi.Response(
+            description="Validation error",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING)
+                }
+            )
+        ),
+        401: openapi.Response(
+            description="Unauthorized",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING)
+                }
+            )
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_profile(request):
+    """
+    Create a new profile with user endpoint
+    Supports file uploads (photo, aadhar_card, pan_card)
+    """
+    serializer = ProfileCreateSerializer(
+        data=request.data,
+        context={'request': request}
+    )
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    profile = serializer.save()
+    
+    # Return created profile
+    response_serializer = CurrentUserProfileSerializer(profile, context={'request': request})
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)

@@ -217,3 +217,104 @@ class CurrentUserProfileUpdateSerializer(serializers.Serializer):
         
         return instance
 
+
+class ProfileCreateSerializer(serializers.Serializer):
+    """Serializer for creating a new profile with user"""
+    # User fields
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=False, allow_blank=True, default='')
+    email = serializers.EmailField(required=True)
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
+    
+    # Profile fields
+    photo = serializers.ImageField(required=False, allow_null=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
+    address = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False, allow_null=True, allow_blank=True)
+    state = serializers.CharField(max_length=100, required=False, allow_null=True, allow_blank=True)
+    pin_code = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
+    country = serializers.CharField(max_length=100, required=False, allow_null=True, allow_blank=True)
+    aadhar_number = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
+    pan_number = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
+    aadhar_card = serializers.FileField(required=False, allow_null=True)
+    pan_card = serializers.FileField(required=False, allow_null=True)
+    
+    def validate_email(self, value):
+        """Validate email uniqueness"""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+    
+    def create(self, validated_data):
+        """Create user and profile"""
+        from django.db import transaction
+        from django.contrib.auth.models import User
+        
+        first_name = validated_data.pop('first_name')
+        last_name = validated_data.pop('last_name', '')
+        email = validated_data.pop('email')
+        phone_number = validated_data.pop('phone_number', None)
+        
+        # Extract profile fields
+        photo = validated_data.pop('photo', None)
+        date_of_birth = validated_data.pop('date_of_birth', None)
+        gender = validated_data.pop('gender', None)
+        address = validated_data.pop('address', None)
+        city = validated_data.pop('city', None)
+        state = validated_data.pop('state', None)
+        pin_code = validated_data.pop('pin_code', None)
+        country = validated_data.pop('country', None)
+        aadhar_number = validated_data.pop('aadhar_number', None)
+        pan_number = validated_data.pop('pan_number', None)
+        aadhar_card = validated_data.pop('aadhar_card', None)
+        pan_card = validated_data.pop('pan_card', None)
+        
+        request_user = self.context['request'].user
+        
+        with transaction.atomic():
+            # Create user
+            username = email or f"profile_{Profile.objects.count() + 1}"
+            base_username = username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}_{counter}"
+                counter += 1
+            
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                first_name=first_name,
+                last_name=last_name or ''
+            )
+            
+            # Create profile
+            profile = Profile.objects.create(
+                user=user,
+                photo=photo,
+                date_of_birth=date_of_birth,
+                gender=gender,
+                address=address,
+                city=city,
+                state=state,
+                pin_code=pin_code,
+                country=country,
+                aadhar_number=aadhar_number,
+                pan_number=pan_number,
+                aadhar_card=aadhar_card,
+                pan_card=pan_card,
+                created_by=request_user if request_user.is_authenticated else None
+            )
+            
+            # Create primary mobile number if provided
+            if phone_number:
+                MobileNumber.objects.create(
+                    user=user,
+                    mobile_number=phone_number,
+                    is_primary=True,
+                    created_by=request_user if request_user.is_authenticated else None,
+                    updated_by=request_user if request_user.is_authenticated else None
+                )
+            
+            return profile
+

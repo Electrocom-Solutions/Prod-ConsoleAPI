@@ -20,7 +20,7 @@ class ClientListSerializer(serializers.ModelSerializer):
         model = Client
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'has_active_amc', 'city', 'state', 'created_at'
+            'has_active_amc', 'city', 'state', 'primary_contact_name', 'created_at'
         ]
         read_only_fields = ['created_at']
     
