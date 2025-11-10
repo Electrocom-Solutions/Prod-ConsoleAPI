@@ -5,11 +5,13 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, Sum, DecimalField, Value
 from django.db.models.functions import Coalesce
 from django.db import transaction
+from django.http import HttpResponse
 from datetime import date, datetime
 from calendar import monthrange
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 import pandas as pd
+import io
 from django.contrib.auth.models import User
 from Profiles.models import Profile
 from Accounts.models import BankAccount
@@ -880,6 +882,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'gender (male/female)': 'gender',
                 'gender': 'gender',
                 'worker type (unskilled, semiskilled, skilled)': 'worker_type',
+                'worker type (unskilled, semiskilled, unskilled)': 'worker_type',  # Handle typo in column header
                 'worker type': 'worker_type',
                 'worker_type': 'worker_type',
                 'salary': 'monthly_salary',
@@ -899,8 +902,47 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'project_id': 'project'
             }
             
-            # Rename columns
+            # Rename columns using exact matches first
             df = df.rename(columns=column_mapping)
+            
+            # Handle partial matches for columns that might have variations
+            # Check for worker_type column with partial matching
+            if 'worker_type' not in df.columns:
+                for col in df.columns:
+                    if 'worker type' in col or 'worker_type' in col:
+                        df = df.rename(columns={col: 'worker_type'})
+                        break
+            
+            # Check for other common variations
+            if 'first_name' not in df.columns:
+                for col in df.columns:
+                    if 'first name' in col or 'firstname' in col:
+                        df = df.rename(columns={col: 'first_name'})
+                        break
+            
+            if 'last_name' not in df.columns:
+                for col in df.columns:
+                    if 'last name' in col or 'lastname' in col:
+                        df = df.rename(columns={col: 'last_name'})
+                        break
+            
+            if 'monthly_salary' not in df.columns:
+                for col in df.columns:
+                    if 'salary' in col:
+                        df = df.rename(columns={col: 'monthly_salary'})
+                        break
+            
+            if 'aadhar_no' not in df.columns:
+                for col in df.columns:
+                    if 'aadhar' in col:
+                        df = df.rename(columns={col: 'aadhar_no'})
+                        break
+            
+            if 'ifsc_code' not in df.columns:
+                for col in df.columns:
+                    if 'ifsc' in col:
+                        df = df.rename(columns={col: 'ifsc_code'})
+                        break
             
             success_count = 0
             failed_count = 0
@@ -1111,6 +1153,133 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': f'Error processing Excel file: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @swagger_auto_schema(
+        operation_id='contract_worker_download_template',
+        operation_summary="Download Contract Worker Bulk Import Template",
+        operation_description="""
+        Download an Excel template file for bulk importing contract workers.
+        
+        **What it returns:**
+        - An Excel file (.xlsx) with pre-filled column headers
+        - Sample data row showing the expected format
+        - All required and optional columns clearly labeled
+        
+        **Excel File Format:**
+        The template includes the following columns:
+        - Sr. No. (optional, for reference)
+        - First Name (required)
+        - Last Name (required)
+        - Email (required)
+        - Phone Number (optional)
+        - Date Of Birth (dd/mm/yy format) (optional)
+        - Gender (male/female) (optional)
+        - Address (optional)
+        - City (optional)
+        - State (optional)
+        - Pincode (optional)
+        - Country (optional)
+        - Worker Type (unskilled, semiskilled, skilled) (required)
+        - Salary (monthly salary) (required)
+        - Aadhar Number (required)
+        - UAN Number (optional)
+        - Department (optional)
+        - Bank Name (optional)
+        - Account Number (optional)
+        - IFSC Code (optional)
+        - Bank Branch (optional)
+        - Project (optional) - Project name or ID
+        
+        **Use Case:**
+        Use this endpoint to download a template Excel file that can be filled with contract worker data and then uploaded using the bulk-upload endpoint.
+        """,
+        tags=['Contract Worker Management'],
+        responses={
+            200: openapi.Response(
+                description="Excel template file",
+                schema=openapi.Schema(type=openapi.TYPE_FILE)
+            )
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='download-template')
+    def download_template(self, request):
+        """Download Excel template for bulk importing contract workers"""
+        try:
+            # Create a DataFrame with column headers and sample data
+            columns = [
+                'Sr. No.',
+                'First Name',
+                'Last Name',
+                'Email',
+                'Phone Number',
+                'Date Of Birth (dd/mm/yy)',
+                'Gender (male/female)',
+                'Address',
+                'City',
+                'State',
+                'Pincode',
+                'Country',
+                'Worker Type (unskilled, semiskilled, skilled)',
+                'Salary',
+                'Aadhar Number',
+                'UAN Number',
+                'Department',
+                'Bank Name',
+                'Account Number',
+                'IFSC Code',
+                'Bank Branch',
+                'Project'
+            ]
+            
+            # Sample data row
+            sample_data = {
+                'Sr. No.': [1],
+                'First Name': ['John'],
+                'Last Name': ['Doe'],
+                'Email': ['john.doe@example.com'],
+                'Phone Number': ['9876543210'],
+                'Date Of Birth (dd/mm/yy)': ['01/01/1990'],
+                'Gender (male/female)': ['male'],
+                'Address': ['123 Main Street'],
+                'City': ['Mumbai'],
+                'State': ['Maharashtra'],
+                'Pincode': ['400001'],
+                'Country': ['India'],
+                'Worker Type (unskilled, semiskilled, skilled)': ['skilled'],
+                'Salary': [25000],
+                'Aadhar Number': ['123456789012'],
+                'UAN Number': ['123456789012'],
+                'Department': ['Construction'],
+                'Bank Name': ['State Bank of India'],
+                'Account Number': ['1234567890123456'],
+                'IFSC Code': ['SBIN0001234'],
+                'Bank Branch': ['Mumbai Main Branch'],
+                'Project': ['']
+            }
+            
+            df = pd.DataFrame(sample_data, columns=columns)
+            
+            # Create Excel file in memory
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Contract Workers')
+            
+            output.seek(0)
+            
+            # Create HTTP response with Excel file
+            response = HttpResponse(
+                output.read(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="contract_workers_template.xlsx"'
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error generating template: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
