@@ -12,12 +12,15 @@ class ClientListSerializer(serializers.ModelSerializer):
     email = serializers.SerializerMethodField()
     phone_number = serializers.CharField(read_only=True)
     has_active_amc = serializers.SerializerMethodField()
+    # Address fields from Profile model
+    city = serializers.SerializerMethodField()
+    state = serializers.SerializerMethodField()
     
     class Meta:
         model = Client
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
-            'has_active_amc', 'created_at'
+            'has_active_amc', 'city', 'state', 'created_at'
         ]
         read_only_fields = ['created_at']
     
@@ -55,6 +58,14 @@ class ClientListSerializer(serializers.ModelSerializer):
     def get_has_active_amc(self, obj):
         """Check if client has active AMC"""
         return obj.amcs.filter(status=AMC.Status.ACTIVE).exists()
+    
+    def get_city(self, obj):
+        """Get city from profile"""
+        return obj.profile.city if obj.profile else None
+    
+    def get_state(self, obj):
+        """Get state from profile"""
+        return obj.profile.state if obj.profile else None
 
 
 class ClientDetailSerializer(serializers.ModelSerializer):

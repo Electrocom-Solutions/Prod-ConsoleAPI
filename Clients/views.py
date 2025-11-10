@@ -269,8 +269,44 @@ class ClientViewSet(viewsets.ModelViewSet):
         }
     )
     def destroy(self, request, *args, **kwargs):
-        """Delete a client"""
-        return super().destroy(request, *args, **kwargs)
+        """Delete a client and its associated profile and user if they have no other references"""
+        from django.db import transaction
+        from Profiles.models import Profile
+        from django.contrib.auth.models import User
+        
+        instance = self.get_object()
+        profile = instance.profile
+        user = profile.user if profile else None
+        client_id = instance.id
+        profile_id = profile.id if profile else None
+        
+        with transaction.atomic():
+            # Check if profile has other clients before deleting
+            if profile:
+                other_clients = Client.objects.filter(profile=profile).exclude(id=client_id).exists()
+                
+                # Delete the client first
+                super().destroy(request, *args, **kwargs)
+                
+                # If no other clients, delete the profile and user
+                if not other_clients:
+                    if user:
+                        # Check if user has other profiles
+                        other_profiles = Profile.objects.filter(user=user).exclude(id=profile_id).exists()
+                        if not other_profiles:
+                            # Delete user (this will cascade delete the profile due to CASCADE relationship)
+                            user.delete()
+                        else:
+                            # User has other profiles, so only delete this profile
+                            profile.delete()
+                    else:
+                        # No user, so just delete the profile
+                        profile.delete()
+            else:
+                # Delete the client if no profile
+                super().destroy(request, *args, **kwargs)
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     @swagger_auto_schema(
         operation_id='client_statistics',
