@@ -108,7 +108,11 @@ class AMCCreateSerializer(serializers.ModelSerializer):
     
     def validate_amc_number(self, value):
         """Validate AMC number uniqueness"""
-        if AMC.objects.filter(amc_number=value).exists():
+        # Exclude current instance when updating
+        queryset = AMC.objects.filter(amc_number=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
             raise serializers.ValidationError("AMC number already exists.")
         return value
     
