@@ -2195,9 +2195,14 @@ class PayrollViewSet(viewsets.ModelViewSet):
         )
         
         # Total payroll (sum of all net_amount)
-        total_payroll = payroll_queryset.aggregate(
-            total=Coalesce(Sum('net_amount'), 0)
-        )['total'] or 0
+        total_payroll_result = payroll_queryset.aggregate(
+            total=Coalesce(
+                Sum('net_amount'),
+                Value(0, output_field=DecimalField(max_digits=15, decimal_places=2)),
+                output_field=DecimalField(max_digits=15, decimal_places=2)
+            )
+        )
+        total_payroll = total_payroll_result['total'] or 0
         
         # Employees count (unique employees)
         employees_count = payroll_queryset.values('employee').distinct().count()
@@ -2212,15 +2217,49 @@ class PayrollViewSet(viewsets.ModelViewSet):
             payroll_status=PayrollRecord.PayrollStatus.PAID
         ).count()
         
-        data = {
-            'total_payroll': float(total_payroll),
-            'employees_count': employees_count,
-            'total_payment_pending': total_payment_pending,
-            'total_payment_paid': total_payment_paid
-        }
-        
-        serializer = PayrollStatisticsSerializer(data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            # Convert total_payroll to Decimal if needed
+            from decimal import Decimal
+            if isinstance(total_payroll, Decimal):
+                total_payroll_decimal = total_payroll
+            elif total_payroll is None:
+                total_payroll_decimal = Decimal('0')
+            else:
+                total_payroll_decimal = Decimal(str(total_payroll))
+            
+            data = {
+                'total_payroll': total_payroll_decimal,
+                'employees_count': employees_count,
+                'total_payment_pending': total_payment_pending,
+                'total_payment_paid': total_payment_paid
+            }
+            
+            serializer = PayrollStatisticsSerializer(data=data)
+            if not serializer.is_valid():
+                return Response(
+                    {'error': 'Serialization error', 'details': serializer.errors},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in payroll statistics: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            from django.conf import settings
+            error_response = {
+                'error': 'Failed to fetch payroll statistics',
+                'message': str(e)
+            }
+            if settings.DEBUG:
+                error_response['traceback'] = traceback.format_exc()
+            return Response(
+                error_response,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @swagger_auto_schema(
         operation_id='payroll_list',
