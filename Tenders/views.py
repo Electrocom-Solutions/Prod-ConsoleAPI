@@ -2,13 +2,16 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, DecimalField, Value
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.http import FileResponse
+from django.conf import settings
 from urllib.parse import quote
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+import logging
+import traceback
 
 from .models import Tender, TenderDeposit, TenderDocument
 from .serializers import (
@@ -344,61 +347,156 @@ class TenderViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='statistics')
     def statistics(self, request):
         """Get tender management statistics for dashboard"""
-        # Total tenders
-        total_tenders = Tender.objects.count()
+        logger = logging.getLogger(__name__)
         
-        # Tenders filed
-        tenders_filed = Tender.objects.filter(status=Tender.Status.FILED).count()
-        
-        # Tenders awarded
-        tenders_awarded = Tender.objects.filter(status=Tender.Status.AWARDED).count()
-        
-        # Total value of awarded tenders
-        total_value_awarded = Tender.objects.filter(
-            status=Tender.Status.AWARDED
-        ).aggregate(
-            total=Coalesce(Sum('estimated_value'), 0)
-        )['total'] or 0
-        
-        # Pending EMDs: Tenders in Closed or Lost status AND EMD not collected
-        # Prefetch deposits to avoid N+1 queries
-        pending_emd_tenders = Tender.objects.filter(
-            status__in=[Tender.Status.CLOSED, Tender.Status.LOST],
-            emd_collected=False
-        ).prefetch_related('deposits')
-        pending_emds_count = pending_emd_tenders.count()
-        
-        # Calculate pending EMD amount
-        # For Lost: collect only SD1 (EMD_Security1)
-        # For Closed: collect SD1 + SD2 (EMD_Security1 + EMD_Security2)
-        pending_emd_amount = 0.0
-        for tender in pending_emd_tenders:
-            # Get all deposits for this tender (already prefetched)
-            deposits = list(tender.deposits.all())
+        try:
+            # Total tenders
+            total_tenders = Tender.objects.count()
             
-            if tender.status == Tender.Status.CLOSED:
-                # Closed: collect whole EMD (Security Deposit 1 + Security Deposit 2)
-                # Sum all deposits for this tender
-                for deposit in deposits:
-                    pending_emd_amount += float(deposit.dd_amount)
-            elif tender.status == Tender.Status.LOST:
-                # Lost: collect only Security Deposit 1 (EMD_Security1)
-                for deposit in deposits:
-                    if deposit.deposit_type == TenderDeposit.DepositType.EMD_SECURITY1:
-                        pending_emd_amount += float(deposit.dd_amount)
-                        break  # Only need SD1 for Lost tenders
-        
-        data = {
-            'total_tenders': total_tenders,
-            'tenders_filed': tenders_filed,
-            'tenders_awarded': tenders_awarded,
-            'total_value_awarded': float(total_value_awarded),
-            'pending_emds': pending_emds_count,
-            'pending_emd_amount': pending_emd_amount
-        }
-        
-        serializer = TenderStatisticsSerializer(data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            # Tenders filed
+            tenders_filed = Tender.objects.filter(status=Tender.Status.FILED).count()
+            
+            # Tenders awarded
+            tenders_awarded = Tender.objects.filter(status=Tender.Status.AWARDED).count()
+            
+            # Total value of awarded tenders
+            # Use output_field to avoid mixed type error (DecimalField + IntegerField)
+            # estimated_value field has max_digits=14, decimal_places=2
+            total_value_awarded_result = Tender.objects.filter(
+                status=Tender.Status.AWARDED
+            ).aggregate(
+                total=Coalesce(
+                    Sum('estimated_value'),
+                    Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
+                    output_field=DecimalField(max_digits=14, decimal_places=2)
+                )
+            )['total']
+            # Coalesce returns 0 (which could be int or Decimal), or None if no results
+            total_value_awarded = total_value_awarded_result if total_value_awarded_result is not None else 0
+            
+            # Pending EMDs: Tenders in Closed or Lost status AND EMD not collected
+            # Prefetch deposits to avoid N+1 queries
+            from decimal import Decimal
+            from django.core.exceptions import FieldError
+            
+            # Build queryset - try to filter by emd_collected, fallback if field doesn't exist
+            has_emd_collected_field = False
+            
+            # First, try to check if the field exists by attempting a simple query
+            # Django queries are lazy, so we need to force evaluation to catch FieldError
+            try:
+                # Try to get count with emd_collected filter - this will raise FieldError if field doesn't exist
+                test_count = Tender.objects.filter(
+                    status__in=[Tender.Status.CLOSED, Tender.Status.LOST],
+                    emd_collected=False
+                ).count()
+                # If we get here, the field exists
+                has_emd_collected_field = True
+                pending_emd_tenders_qs = Tender.objects.filter(
+                    status__in=[Tender.Status.CLOSED, Tender.Status.LOST],
+                    emd_collected=False
+                ).prefetch_related('deposits')
+            except FieldError as e:
+                # Field doesn't exist in database (migration not run), filter by status only
+                logger.warning(f"emd_collected field not found in database: {str(e)}. Migration may need to be run.")
+                pending_emd_tenders_qs = Tender.objects.filter(
+                    status__in=[Tender.Status.CLOSED, Tender.Status.LOST]
+                ).prefetch_related('deposits')
+                has_emd_collected_field = False
+            except Exception as e:
+                # Catch any other errors and log them
+                logger.error(f"Unexpected error building pending EMD queryset: {str(e)}")
+                # Fallback to status-only filter
+                pending_emd_tenders_qs = Tender.objects.filter(
+                    status__in=[Tender.Status.CLOSED, Tender.Status.LOST]
+                ).prefetch_related('deposits')
+                has_emd_collected_field = False
+            
+            # Calculate pending EMD amount
+            # For Lost: collect only SD1 (EMD_Security1)
+            # For Closed: collect SD1 + SD2 (EMD_Security1 + EMD_Security2)
+            pending_emd_amount = Decimal('0')
+            pending_emds_count = 0
+            
+            for tender in pending_emd_tenders_qs:
+                # Check if emd_collected field exists and if EMD is already collected
+                if has_emd_collected_field:
+                    try:
+                        if getattr(tender, 'emd_collected', False):
+                            # Skip this tender if EMD is already collected
+                            continue
+                    except AttributeError:
+                        # Field doesn't exist on this instance, continue
+                        pass
+                
+                pending_emds_count += 1
+                # Get all deposits for this tender (already prefetched)
+                try:
+                    deposits = list(tender.deposits.all())
+                except Exception as e:
+                    logger.warning(f"Error fetching deposits for tender {tender.id}: {str(e)}")
+                    deposits = []
+                
+                if tender.status == Tender.Status.CLOSED:
+                    # Closed: collect whole EMD (Security Deposit 1 + Security Deposit 2)
+                    # Sum all deposits for this tender
+                    for deposit in deposits:
+                        if deposit and deposit.dd_amount:
+                            try:
+                                pending_emd_amount += Decimal(str(deposit.dd_amount))
+                            except (ValueError, TypeError, AttributeError) as e:
+                                # Skip invalid deposit amounts
+                                logger.warning(f"Invalid deposit amount for tender {tender.id}, deposit {deposit.id}: {str(e)}")
+                                continue
+                elif tender.status == Tender.Status.LOST:
+                    # Lost: collect only Security Deposit 1 (EMD_Security1)
+                    for deposit in deposits:
+                        if deposit and deposit.deposit_type == TenderDeposit.DepositType.EMD_SECURITY1 and deposit.dd_amount:
+                            try:
+                                pending_emd_amount += Decimal(str(deposit.dd_amount))
+                            except (ValueError, TypeError, AttributeError) as e:
+                                # Skip invalid deposit amounts
+                                logger.warning(f"Invalid deposit amount for tender {tender.id}, deposit {deposit.id}: {str(e)}")
+                                continue
+                            break  # Only need SD1 for Lost tenders
+            
+            # Convert total_value_awarded to Decimal
+            # total_value_awarded might already be a Decimal from the database
+            try:
+                if isinstance(total_value_awarded, Decimal):
+                    total_value_decimal = total_value_awarded
+                elif total_value_awarded is None:
+                    total_value_decimal = Decimal('0')
+                else:
+                    total_value_decimal = Decimal(str(total_value_awarded))
+            except (ValueError, TypeError, AttributeError):
+                total_value_decimal = Decimal('0')
+            
+            data = {
+                'total_tenders': total_tenders,
+                'tenders_filed': tenders_filed,
+                'tenders_awarded': tenders_awarded,
+                'total_value_awarded': total_value_decimal,
+                'pending_emds': pending_emds_count,
+                'pending_emd_amount': pending_emd_amount
+            }
+            
+            serializer = TenderStatisticsSerializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            error_traceback = traceback.format_exc()
+            logger.error(f"Error in tender statistics: {str(e)}")
+            logger.error(error_traceback)
+            # Return a more detailed error response for debugging
+            error_response = {'error': str(e)}
+            if settings.DEBUG:
+                error_response['traceback'] = error_traceback
+            return Response(
+                error_response,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @swagger_auto_schema(
         operation_id='tender_attach_document',
