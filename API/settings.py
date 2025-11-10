@@ -492,14 +492,13 @@ CELERY_TASK_SEND_SENT_EVENT = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
+    "https://console.electrocomsolutions.in",
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5000",
     "http://127.0.0.1:5001",
-    "https://console.electrocomsolutions.in",
-    "http://console.electrocomsolutions.in"
 ]
 
 CORS_ALLOW_HEADERS = [
@@ -515,26 +514,25 @@ CORS_ALLOW_HEADERS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+    "https://console.electrocomsolutions.in",
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5000",
     "http://127.0.0.1:5001",
-    "https://console.electrocomsolutions.in",
-    "http://console.electrocomsolutions.in"
 ]
 
 # Session Configuration
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
 SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in'
 
 # CSRF Cookie Configuration
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False').lower() == 'true'
 CSRF_COOKIE_DOMAIN = '.electrocomsolutions.in'
 CSRF_COOKIE_PATH = '/'
 CSRF_USE_SESSIONS = False
