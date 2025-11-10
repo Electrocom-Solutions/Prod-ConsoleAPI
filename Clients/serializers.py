@@ -80,13 +80,21 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     aadhar_card = serializers.FileField(write_only=True, required=False, allow_null=True)
     pan_card = serializers.FileField(write_only=True, required=False, allow_null=True)
     
+    # Address fields (stored in Profile model)
+    address = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    city = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    state = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    pin_code = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    country = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+    
     class Meta:
         model = Client
         fields = [
             'id', 'first_name', 'last_name', 'full_name', 'email', 'phone_number',
             'photo', 'photo_url', 'date_of_birth', 'gender', 'aadhar_number', 'pan_number',
             'aadhar_card', 'pan_card', 'aadhar_card_url', 'pan_card_url',
-            'designation', 'joining_date', 'monthly_salary', 'notes', 'profile'
+            'designation', 'joining_date', 'monthly_salary', 'notes', 'profile',
+            'primary_contact_name', 'address', 'city', 'state', 'pin_code', 'country'
         ]
         read_only_fields = ['id']
     
@@ -127,6 +135,13 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         date_of_birth = validated_data.pop('date_of_birth', None)
         gender = validated_data.pop('gender', None)
         
+        # Extract address fields from validated_data as they belong to Profile
+        address = validated_data.pop('address', None)
+        city = validated_data.pop('city', None)
+        state = validated_data.pop('state', None)
+        pin_code = validated_data.pop('pin_code', None)
+        country = validated_data.pop('country', None)
+        
         # Create or get profile for the client
         profile = validated_data.pop('profile', None)
         
@@ -151,17 +166,22 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     last_name=validated_data.get('last_name', '')
                 )
                 
-                # Create profile for the user with file uploads
+                # Create profile for the user with file uploads and address
                 profile = Profile.objects.create(
                     user=user,
                     aadhar_card=aadhar_card,
                     pan_card=pan_card,
                     date_of_birth=date_of_birth,
                     gender=gender,
+                    address=address,
+                    city=city,
+                    state=state,
+                    pin_code=pin_code,
+                    country=country,
                     created_by=self.context['request'].user
                 )
             else:
-                # Update existing profile with file uploads if provided
+                # Update existing profile with file uploads and address if provided
                 if aadhar_card is not None:
                     profile.aadhar_card = aadhar_card
                 if pan_card is not None:
@@ -170,6 +190,16 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     profile.date_of_birth = date_of_birth
                 if gender is not None:
                     profile.gender = gender
+                if address is not None:
+                    profile.address = address
+                if city is not None:
+                    profile.city = city
+                if state is not None:
+                    profile.state = state
+                if pin_code is not None:
+                    profile.pin_code = pin_code
+                if country is not None:
+                    profile.country = country
                 user = self.context['request'].user
                 profile.updated_by = user if user.is_authenticated else None
                 profile.save()
@@ -190,6 +220,13 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         date_of_birth = validated_data.pop('date_of_birth', None)
         gender = validated_data.pop('gender', None)
         
+        # Extract address fields from validated_data as they belong to Profile
+        address = validated_data.pop('address', None)
+        city = validated_data.pop('city', None)
+        state = validated_data.pop('state', None)
+        pin_code = validated_data.pop('pin_code', None)
+        country = validated_data.pop('country', None)
+        
         user = self.context['request'].user
         validated_data['updated_by'] = user if user.is_authenticated else None
         
@@ -206,7 +243,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     user.last_name = validated_data.get('last_name', user.last_name)
                 user.save()
             
-            # Update profile with file uploads if provided
+            # Update profile with file uploads and address if provided
             if instance.profile:
                 profile_obj = instance.profile
                 if aadhar_card is not None:
@@ -217,6 +254,16 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     profile_obj.date_of_birth = date_of_birth
                 if gender is not None:
                     profile_obj.gender = gender
+                if address is not None:
+                    profile_obj.address = address
+                if city is not None:
+                    profile_obj.city = city
+                if state is not None:
+                    profile_obj.state = state
+                if pin_code is not None:
+                    profile_obj.pin_code = pin_code
+                if country is not None:
+                    profile_obj.country = country
                 user = self.context['request'].user
                 profile_obj.updated_by = user if user.is_authenticated else None
                 profile_obj.save()
