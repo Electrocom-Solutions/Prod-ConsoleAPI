@@ -5,11 +5,12 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from datetime import date
 from calendar import monthrange
+from decimal import Decimal
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 import pandas as pd
@@ -143,56 +144,66 @@ class PaymentTrackerViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='statistics')
     def statistics(self, request):
         """Get payment tracking statistics for dashboard"""
-        # Get month and year filters (default to current month/year)
-        month_filter = request.query_params.get('month', None)
-        year_filter = request.query_params.get('year', None)
-        
-        if month_filter and year_filter:
-            month = int(month_filter)
-            year = int(year_filter)
-            first_day = date(year, month, 1)
-        else:
-            today = date.today()
-            month = today.month
-            year = today.year
-            first_day = date(year, month, 1)
-        
-        # Filter payment records by month and year
-        payment_queryset = PaymentTracker.objects.filter(sheet_period=first_day)
-        
-        # Total payable (sum of all net_salary)
-        total_payable = payment_queryset.aggregate(
-            total=Coalesce(Sum('net_salary'), 0)
-        )['total'] or 0
-        
-        # Pending payment count
-        pending_payment_count = payment_queryset.filter(
-            payment_status=PaymentTracker.PaymentStatus.PENDING
-        ).count()
-        
-        # Pending payment amount
-        pending_payment_amount = payment_queryset.filter(
-            payment_status=PaymentTracker.PaymentStatus.PENDING
-        ).aggregate(
-            total=Coalesce(Sum('net_salary'), 0)
-        )['total'] or 0
-        
-        # Total paid
-        total_paid = payment_queryset.filter(
-            payment_status=PaymentTracker.PaymentStatus.PAID
-        ).aggregate(
-            total=Coalesce(Sum('net_salary'), 0)
-        )['total'] or 0
-        
-        data = {
-            'total_payable': float(total_payable),
-            'pending_payment_count': pending_payment_count,
-            'pending_payment_amount': float(pending_payment_amount),
-            'total_paid': float(total_paid)
-        }
-        
-        serializer = PaymentTrackerStatisticsSerializer(data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            # Get month and year filters (default to current month/year)
+            month_filter = request.query_params.get('month', None)
+            year_filter = request.query_params.get('year', None)
+            
+            if month_filter and year_filter:
+                month = int(month_filter)
+                year = int(year_filter)
+                first_day = date(year, month, 1)
+            else:
+                today = date.today()
+                month = today.month
+                year = today.year
+                first_day = date(year, month, 1)
+            
+            # Filter payment records by month and year
+            payment_queryset = PaymentTracker.objects.filter(sheet_period=first_day)
+            
+            # Total payable (sum of all net_salary)
+            total_payable_result = payment_queryset.aggregate(
+                total=Coalesce(Sum('net_salary'), Value(0, output_field=DecimalField()))
+            )
+            total_payable = float(total_payable_result['total'] or Decimal('0'))
+            
+            # Pending payment count
+            pending_payment_count = payment_queryset.filter(
+                payment_status=PaymentTracker.PaymentStatus.PENDING
+            ).count()
+            
+            # Pending payment amount
+            pending_payment_amount_result = payment_queryset.filter(
+                payment_status=PaymentTracker.PaymentStatus.PENDING
+            ).aggregate(
+                total=Coalesce(Sum('net_salary'), Value(0, output_field=DecimalField()))
+            )
+            pending_payment_amount = float(pending_payment_amount_result['total'] or Decimal('0'))
+            
+            # Total paid
+            total_paid_result = payment_queryset.filter(
+                payment_status=PaymentTracker.PaymentStatus.PAID
+            ).aggregate(
+                total=Coalesce(Sum('net_salary'), Value(0, output_field=DecimalField()))
+            )
+            total_paid = float(total_paid_result['total'] or Decimal('0'))
+            
+            data = {
+                'total_payable': total_payable,
+                'pending_payment_count': pending_payment_count,
+                'pending_payment_amount': pending_payment_amount,
+                'total_paid': total_paid
+            }
+            
+            serializer = PaymentTrackerStatisticsSerializer(data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error fetching payment tracker statistics: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'Failed to fetch payment tracker statistics'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @swagger_auto_schema(
         operation_id='payment_tracker_list',
