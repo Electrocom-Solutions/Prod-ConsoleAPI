@@ -132,9 +132,10 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        title = serializer.validated_data['title']
+        template_id = serializer.validated_data.get('template_id', None)
+        title = serializer.validated_data.get('title', None)
         category = serializer.validated_data.get('category', None)
-        firm = serializer.validated_data['firm']
+        firm = serializer.validated_data.get('firm', None)
         upload_file = serializer.validated_data['upload_file']
         notes = serializer.validated_data.get('notes', None)
         
@@ -152,12 +153,27 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
         
         try:
             with transaction.atomic():
-                # Check if template with same title, category, and firm exists
-                existing_template = DocumentTemplate.objects.filter(
-                    title=title,
-                    category=category,
-                    firm=firm
-                ).first()
+                # If template_id is provided, use it directly to add a new version
+                if template_id:
+                    try:
+                        existing_template = DocumentTemplate.objects.get(id=template_id)
+                    except DocumentTemplate.DoesNotExist:
+                        return Response(
+                            {'error': f'Template with ID {template_id} does not exist.'},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                else:
+                    # Check if template with same title, category, and firm exists
+                    if not title or not firm:
+                        return Response(
+                            {'error': 'title and firm are required when template_id is not provided.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    existing_template = DocumentTemplate.objects.filter(
+                        title=title,
+                        category=category,
+                        firm=firm
+                    ).first()
                 
                 if existing_template:
                     # Template exists - create new version
