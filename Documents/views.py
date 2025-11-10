@@ -5,6 +5,8 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Max
 from django.db import transaction
 from django.http import FileResponse, HttpResponse
+from django.views.decorators.clickjacking import xframe_options_exempt
+from django.utils.decorators import method_decorator
 from urllib.parse import quote
 import zipfile
 import io
@@ -554,6 +556,7 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
             404: openapi.Response(description="Version not found")
         }
     )
+    @method_decorator(xframe_options_exempt)
     @action(detail=True, methods=['get'], url_path='preview-version/(?P<version_id>[0-9]+)')
     def preview_version(self, request, pk=None, version_id=None):
         """Preview a specific document version (inline display for iframe)"""
@@ -588,6 +591,13 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
             )
             # Use inline instead of attachment for preview
             response['Content-Disposition'] = f'inline; filename="{quote(filename)}"'
+            # Remove X-Frame-Options header to allow iframe embedding (needed for cross-subdomain)
+            # The @xframe_options_exempt decorator prevents Django middleware from adding DENY
+            # But we also explicitly remove it here as a safety measure
+            try:
+                del response['X-Frame-Options']
+            except KeyError:
+                pass  # Header doesn't exist, which is fine
             # Add CORS headers if needed
             response['Access-Control-Allow-Origin'] = '*'
             response['Access-Control-Allow-Methods'] = 'GET'
@@ -632,6 +642,7 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
             404: openapi.Response(description="Published version not found")
         }
     )
+    @method_decorator(xframe_options_exempt)
     @action(detail=True, methods=['get'], url_path='preview-published')
     def preview_published(self, request, pk=None):
         """Preview the published version of a document template (inline display for iframe)"""
@@ -670,6 +681,13 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
             )
             # Use inline instead of attachment for preview
             response['Content-Disposition'] = f'inline; filename="{quote(filename)}"'
+            # Remove X-Frame-Options header to allow iframe embedding (needed for cross-subdomain)
+            # The @xframe_options_exempt decorator prevents Django middleware from adding DENY
+            # But we also explicitly remove it here as a safety measure
+            try:
+                del response['X-Frame-Options']
+            except KeyError:
+                pass  # Header doesn't exist, which is fine
             # Add CORS headers if needed
             response['Access-Control-Allow-Origin'] = '*'
             response['Access-Control-Allow-Methods'] = 'GET'
