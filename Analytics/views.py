@@ -54,10 +54,9 @@ class DashboardViewSet(viewsets.ViewSet):
         
         return result
     
-    def _get_recent_activities(self, limit=3):
-        """Helper method to get recent activities - removes code duplication"""
-        activities = ActivityLog.objects.select_related('created_by').order_by('-created_at')[:limit]
-        return RecentActivitySerializer(activities, many=True).data
+    def _get_recent_activities_queryset(self, limit=3):
+        """Helper method to get recent activities queryset - removes code duplication"""
+        return ActivityLog.objects.select_related('created_by').order_by('-created_at')[:limit]
     
     @swagger_auto_schema(
         operation_id='dashboard_recent_activities',
@@ -92,8 +91,9 @@ class DashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='recent-activities')
     def recent_activities(self, request):
         """Get 3 most recent activities"""
-        activities_data = self._get_recent_activities(limit=3)
-        return Response({'recent_activities': activities_data})
+        activities = self._get_recent_activities_queryset(limit=3)
+        serializer = RecentActivitySerializer(activities, many=True)
+        return Response({'recent_activities': serializer.data})
     
     @swagger_auto_schema(
         operation_id='dashboard_all_stats',
@@ -132,20 +132,52 @@ class DashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='all-stats')
     def all_stats(self, request):
         """Get all dashboard statistics in one API call"""
-        counts = self._get_counts()
-        expiring_amcs_data = self._get_expiring_amcs(limit=2)
-        activities_data = self._get_recent_activities(limit=3)
+        import logging
+        logger = logging.getLogger(__name__)
         
-        data = {
-            **counts,
-            'expiring_amcs': expiring_amcs_data,
-            'recent_activities': activities_data
-        }
-        
-        # Validate and serialize the data
-        serializer = DashboardStatsSerializer(data=data)
-        if serializer.is_valid():
-            return Response(serializer.validated_data)
-        else:
-            # If validation fails, return the data anyway (shouldn't happen with our structure)
+        try:
+            counts = self._get_counts()
+            expiring_amcs_data = self._get_expiring_amcs(limit=2)
+            activities = self._get_recent_activities_queryset(limit=3)
+            
+            # Serialize activities separately to ensure proper serialization of User objects
+            # This ensures created_by is serialized as an integer ID, not a User object
+            activities_serializer = RecentActivitySerializer(activities, many=True)
+            # Convert to list to ensure all data is fully evaluated and serialized
+            activities_data = list(activities_serializer.data)
+            
+            # Build response data - ensure all values are JSON-serializable
+            data = {
+                'total_clients': int(counts['total_clients']),
+                'active_amcs_count': int(counts['active_amcs_count']),
+                'active_tenders_count': int(counts['active_tenders_count']),
+                'in_progress_tasks_count': int(counts['in_progress_tasks_count']),
+                'expiring_amcs': expiring_amcs_data,
+                'recent_activities': activities_data
+            }
+            
+            # Return the data directly - activities are already properly serialized
+            # All User objects should be converted to integer IDs by the serializer
             return Response(data)
+        except Exception as e:
+            # Log the error and return a safe response
+            logger.error(f"Error in all_stats endpoint: {str(e)}", exc_info=True)
+            # Return basic stats even if activities fail
+            try:
+                counts = self._get_counts()
+                expiring_amcs_data = self._get_expiring_amcs(limit=2)
+                return Response({
+                    **counts,
+                    'expiring_amcs': expiring_amcs_data,
+                    'recent_activities': []
+                })
+            except Exception as inner_e:
+                logger.error(f"Error getting fallback stats: {str(inner_e)}", exc_info=True)
+                return Response({
+                    'total_clients': 0,
+                    'active_amcs_count': 0,
+                    'active_tenders_count': 0,
+                    'in_progress_tasks_count': 0,
+                    'expiring_amcs': [],
+                    'recent_activities': []
+                }, status=500)
