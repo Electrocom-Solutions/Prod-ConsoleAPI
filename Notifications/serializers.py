@@ -75,6 +75,10 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
         """Create notifications for all employees"""
         from django.utils import timezone
         from HR.models import Employee
+        from Scheduler.tasks import send_scheduled_notification
+        import logging
+        
+        logger = logging.getLogger(__name__)
         
         scheduled_at = validated_data.pop('scheduled_at', None)
         title = validated_data.get('title')
@@ -82,50 +86,133 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
         notification_type = validated_data.get('type')
         channel = validated_data.get('channel', Notification.Channel.IN_APP)
         
-        # Get all employees (users linked to Employee model)
-        employees = Employee.objects.select_related('profile', 'profile__user').all()
-        
-        notifications_created = []
         current_time = timezone.now()
+        request_user = self.context['request'].user
         
         # Determine if notification should be sent immediately or scheduled
         send_immediately = scheduled_at is None or scheduled_at <= current_time
         
-        for employee in employees:
-            if employee.profile and employee.profile.user:
-                user = employee.profile.user
-                
-                request_user = self.context['request'].user
-                notification = Notification.objects.create(
-                    recipient=user,
+        if send_immediately:
+            # Send immediately - create notifications for all employees now
+            employees = Employee.objects.select_related('profile', 'profile__user').all()
+            notifications_created = []
+            
+            for employee in employees:
+                if employee.profile and employee.profile.user:
+                    user = employee.profile.user
+                    notification = Notification.objects.create(
+                        recipient=user,
+                        title=title,
+                        message=message,
+                        type=notification_type,
+                        channel=channel,
+                        scheduled_at=None,
+                        sent_at=current_time,
+                        created_by=request_user if request_user.is_authenticated else None
+                    )
+                    notifications_created.append(notification)
+            
+            # Return the first notification (for API response)
+            if notifications_created:
+                return notifications_created[0]
+            else:
+                # If no employees found, create a notification for the creator
+                return Notification.objects.create(
+                    recipient=request_user if request_user.is_authenticated else None,
                     title=title,
                     message=message,
                     type=notification_type,
                     channel=channel,
-                    scheduled_at=scheduled_at,
-                    sent_at=current_time if send_immediately else None,
+                    scheduled_at=None,
+                    sent_at=current_time,
                     created_by=request_user if request_user.is_authenticated else None
                 )
-                
-                notifications_created.append(notification)
-        
-        # Return the first notification (for API response)
-        # In practice, you might want to return a summary
-        if notifications_created:
-            return notifications_created[0]
         else:
-            # If no employees found, create a notification for the creator
-            request_user = self.context['request'].user
-            return Notification.objects.create(
+            # Schedule for later - create a Celery task scheduled for the specific time
+            logger.info(f"Scheduling notification for {scheduled_at} (type: {type(scheduled_at)})")
+            
+            # Ensure scheduled_at is timezone-aware and in UTC for Celery
+            import pytz
+            from django.conf import settings
+            
+            # If scheduled_at is timezone-naive, assume it's in Asia/Kolkata timezone
+            if timezone.is_naive(scheduled_at):
+                kolkata_tz = pytz.timezone('Asia/Kolkata')
+                scheduled_at = kolkata_tz.localize(scheduled_at)
+                logger.info(f"Converted timezone-naive datetime to Asia/Kolkata: {scheduled_at}")
+            
+            # Convert to UTC for Celery (Celery uses UTC internally)
+            scheduled_at_utc = scheduled_at.astimezone(pytz.UTC)
+            logger.info(f"Scheduled time in UTC: {scheduled_at_utc}")
+            
+            # Verify the scheduled time is in the future
+            if scheduled_at_utc <= timezone.now():
+                logger.warning(f"Scheduled time {scheduled_at_utc} is not in the future. Sending immediately.")
+                # Fall back to immediate sending
+                employees = Employee.objects.select_related('profile', 'profile__user').all()
+                notifications_created = []
+                
+                for employee in employees:
+                    if employee.profile and employee.profile.user:
+                        user = employee.profile.user
+                        notification = Notification.objects.create(
+                            recipient=user,
+                            title=title,
+                            message=message,
+                            type=notification_type,
+                            channel=channel,
+                            scheduled_at=None,
+                            sent_at=current_time,
+                            created_by=request_user if request_user.is_authenticated else None
+                        )
+                        notifications_created.append(notification)
+                
+                if notifications_created:
+                    return notifications_created[0]
+                else:
+                    return Notification.objects.create(
+                        recipient=request_user if request_user.is_authenticated else None,
+                        title=title,
+                        message=message,
+                        type=notification_type,
+                        channel=channel,
+                        scheduled_at=None,
+                        sent_at=current_time,
+                        created_by=request_user if request_user.is_authenticated else None
+                    )
+            
+            # Schedule the task to create notifications at the scheduled time
+            try:
+                task_result = send_scheduled_notification.apply_async(
+                    args=[title, message, notification_type, channel],
+                    kwargs={'created_by_id': request_user.id if request_user.is_authenticated else None},
+                    eta=scheduled_at_utc  # Use UTC time for Celery
+                )
+                
+                logger.info(f"Notification scheduled successfully for {scheduled_at} (UTC: {scheduled_at_utc}) with task ID: {task_result.id}")
+            except Exception as e:
+                logger.error(f"Error scheduling notification task: {str(e)}", exc_info=True)
+                raise serializers.ValidationError(f"Failed to schedule notification: {str(e)}")
+            
+            # Create a temporary notification object for the API response
+            # This is only used for serialization - it won't be saved to the database
+            # The actual notifications will be created by the scheduled Celery task at the scheduled time
+            # Use the creator as a temporary recipient for the response object
+            temp_notification = Notification(
                 recipient=request_user if request_user.is_authenticated else None,
                 title=title,
                 message=message,
                 type=notification_type,
                 channel=channel,
-                scheduled_at=scheduled_at,
-                sent_at=current_time if send_immediately else None,
+                scheduled_at=scheduled_at,  # Store original timezone-aware datetime
+                sent_at=None,
                 created_by=request_user if request_user.is_authenticated else None
             )
+            # Set a temporary ID so the serializer can work (it won't be saved)
+            temp_notification.id = 0  # Temporary ID for response
+            # Set created_at manually for the response
+            temp_notification.created_at = current_time
+            return temp_notification
 
 
 # Email Template Serializers

@@ -41,6 +41,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
             recipient=self.request.user
         ).select_related('created_by', 'recipient')
         
+        # Only show notifications that have been sent (sent_at is not None)
+        # Scheduled notifications (sent_at=None) should not appear until they're actually sent
+        queryset = queryset.filter(sent_at__isnull=False)
+        
         # Search by title or message
         search = self.request.query_params.get('search', None)
         if search:
@@ -726,36 +730,68 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
         
         # Determine if email should be sent immediately or scheduled
         current_time = timezone.now()
+        import pytz
         
         # Log for debugging
         logger.info(f"Email send request - scheduled_at: {scheduled_at}, current_time: {current_time}, recipients_count: {len(recipients)}")
         
-        send_immediately = scheduled_at is None or scheduled_at <= current_time
+        # Handle timezone conversion for scheduled_at
+        send_immediately = False
+        if scheduled_at is None:
+            send_immediately = True
+        else:
+            # Ensure scheduled_at is timezone-aware
+            if timezone.is_naive(scheduled_at):
+                kolkata_tz = pytz.timezone('Asia/Kolkata')
+                scheduled_at = kolkata_tz.localize(scheduled_at)
+                logger.info(f"Converted timezone-naive datetime to Asia/Kolkata: {scheduled_at}")
+            
+            # Convert to UTC for comparison and Celery
+            scheduled_at_utc = scheduled_at.astimezone(pytz.UTC)
+            current_time_utc = current_time.astimezone(pytz.UTC) if timezone.is_aware(current_time) else pytz.UTC.localize(current_time)
+            
+            # Check if scheduled time is in the past or present
+            if scheduled_at_utc <= current_time_utc:
+                logger.info(f"Scheduled time {scheduled_at_utc} is not in the future. Sending immediately.")
+                send_immediately = True
         
         if send_immediately:
             logger.info("Sending email immediately")
+            # Check if email backend is configured
+            if settings.EMAIL_BACKEND == 'django.core.mail.backends.console.EmailBackend':
+                logger.warning("Email backend is set to console - emails will only be printed to console, not actually sent!")
+            
             # Send email immediately
             try:
                 # Send email to all recipients
                 email_sent_count = 0
                 errors = []
                 
+                # Check if email settings are configured
+                from_email = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
+                if not from_email:
+                    return Response(
+                        {'error': 'Email configuration is missing. Please configure DEFAULT_FROM_EMAIL or EMAIL_HOST_USER in settings.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                
                 for recipient_email in recipients:
                     try:
                         send_mail(
                             subject=subject,
                             message=body,  # Plain text fallback
-                            from_email=settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER,
+                            from_email=from_email,
                             recipient_list=[recipient_email],
                             html_message=body,  # HTML content
                             fail_silently=False,
                         )
                         email_sent_count += 1
+                        logger.info(f"Email sent successfully to {recipient_email}")
                     except Exception as e:
                         # Log error but continue with other recipients
                         error_msg = f"Error sending email to {recipient_email}: {str(e)}"
                         errors.append(error_msg)
-                        logger.error(error_msg)
+                        logger.error(error_msg, exc_info=True)
                 
                 response_data = {
                     'status': 'sent',
@@ -767,19 +803,26 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
                 
                 if errors:
                     response_data['errors'] = errors
+                    response_data['message'] = f'Email sent to {email_sent_count} recipient(s), but {len(errors)} failed'
+                
+                # Add warning if using console backend
+                if settings.EMAIL_BACKEND == 'django.core.mail.backends.console.EmailBackend':
+                    response_data['warning'] = 'Email backend is set to console - emails are only printed to console, not actually sent. Please configure SMTP settings to send real emails.'
                 
                 return Response(response_data, status=status.HTTP_200_OK)
                 
             except Exception as e:
+                error_msg = f'Error sending email: {str(e)}'
+                logger.error(error_msg, exc_info=True)
                 return Response(
-                    {'error': f'Error sending email: {str(e)}'},
+                    {'error': error_msg},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
         else:
             # Schedule email for later
             from Scheduler.tasks import send_scheduled_email
             
-            logger.info(f"Scheduling email for {scheduled_at} with {len(recipients)} recipients")
+            logger.info(f"Scheduling email for {scheduled_at} (UTC: {scheduled_at_utc}) with {len(recipients)} recipients")
             
             # Create scheduled email task
             try:
@@ -787,17 +830,17 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
                 recipients_list = recipients if isinstance(recipients, list) else list(recipients) if recipients else []
                 
                 # Schedule the email sending task
-                # Note: Celery's apply_async expects the eta to be a datetime object
+                # Note: Celery's apply_async expects the eta to be a UTC datetime object
                 result = send_scheduled_email.apply_async(
                     args=[template.id, recipients_list, placeholder_values or {}],
-                    eta=scheduled_at
+                    eta=scheduled_at_utc  # Use UTC time for Celery
                 )
                 
-                logger.info(f"Email scheduled successfully with task ID: {result.id}")
+                logger.info(f"Email scheduled successfully for {scheduled_at} (UTC: {scheduled_at_utc}) with task ID: {result.id}")
                 
                 return Response({
                     'status': 'scheduled',
-                    'message': f'Email scheduled for {scheduled_at.strftime("%Y-%m-%d %H:%M:%S")}',
+                    'message': f'Email scheduled for {scheduled_at.strftime("%Y-%m-%d %H:%M:%S %Z")}',
                     'recipients_count': len(recipients_list),
                     'scheduled_at': scheduled_at.isoformat(),
                     'sent_at': None,
@@ -805,8 +848,9 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
                 }, status=status.HTTP_200_OK)
                 
             except Exception as e:
-                logger.error(f"Error scheduling email: {str(e)}", exc_info=True)
+                error_msg = f'Error scheduling email: {str(e)}'
+                logger.error(error_msg, exc_info=True)
                 return Response(
-                    {'error': f'Error scheduling email: {str(e)}'},
+                    {'error': error_msg},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )

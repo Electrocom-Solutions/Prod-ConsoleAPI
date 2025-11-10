@@ -521,13 +521,87 @@ def _get_client_name(client):
     return full_name if full_name else f"Client {client.id}"
 
 
+@shared_task(bind=True, name='Scheduler.tasks.send_scheduled_notification')
+def send_scheduled_notification(self, title, message, notification_type, channel, created_by_id=None):
+    """
+    Send a scheduled notification to all employees at the scheduled time.
+    
+    This task is scheduled for a specific date/time and creates notifications
+    for all employees when that time arrives.
+    
+    Args:
+        title: Notification title
+        message: Notification message
+        notification_type: Notification type (from Notification.Type)
+        channel: Notification channel (from Notification.Channel)
+        created_by_id: ID of the user who created the notification (optional)
+    """
+    try:
+        from django.utils import timezone as tz
+        from django.contrib.auth.models import User
+        from Notifications.models import Notification
+        from HR.models import Employee
+        
+        now = tz.now()
+        
+        # Get the user who created the notification
+        created_by = None
+        if created_by_id:
+            try:
+                created_by = User.objects.get(id=created_by_id)
+            except User.DoesNotExist:
+                logger.warning(f"User {created_by_id} not found for scheduled notification")
+        
+        # Get all employees (users linked to Employee model)
+        employees = Employee.objects.select_related('profile', 'profile__user').all()
+        
+        notifications_created = []
+        errors = []
+        
+        for employee in employees:
+            if employee.profile and employee.profile.user:
+                user = employee.profile.user
+                try:
+                    notification = Notification.objects.create(
+                        recipient=user,
+                        title=title,
+                        message=message,
+                        type=notification_type,
+                        channel=channel,
+                        scheduled_at=None,  # Not scheduled anymore, being sent now
+                        sent_at=now,  # Mark as sent immediately
+                        created_by=created_by
+                    )
+                    notifications_created.append(notification)
+                    logger.info(f"Created and sent scheduled notification to {user.username}")
+                except Exception as e:
+                    error_msg = f"Error creating notification for {user.username}: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(error_msg, exc_info=True)
+        
+        result = {
+            'status': 'success',
+            'notifications_created': len(notifications_created),
+            'errors': errors if errors else None,
+            'timestamp': str(now)
+        }
+        
+        logger.info(f"Scheduled notification sent: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in send_scheduled_notification task: {str(e)}", exc_info=True)
+        raise
+
+
 @shared_task(bind=True, name='Scheduler.tasks.send_scheduled_notifications')
 def send_scheduled_notifications(self):
     """
     Send scheduled notifications that are due.
     
     This task runs periodically (every few minutes) to check for scheduled notifications
-    that are due and sends them.
+    that are due and sends them. This is a fallback for any notifications that were
+    created with scheduled_at but not handled by the scheduled task.
     """
     try:
         from django.utils import timezone as tz
@@ -549,6 +623,7 @@ def send_scheduled_notifications(self):
         for notification in scheduled_notifications:
             try:
                 notification.sent_at = now
+                notification.scheduled_at = None  # Clear scheduled_at since it's being sent now
                 notification.save()
                 sent_count += 1
                 logger.info(f"Sent scheduled notification {notification.id} to {notification.recipient.username}")
