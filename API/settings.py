@@ -489,7 +489,6 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True
 
 # CORS Configuration
-# Get CORS allowed origins from environment variable (comma-separated)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
@@ -529,24 +528,14 @@ CSRF_TRUSTED_ORIGINS = [
 # Session Configuration
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
-
-# Set SESSION_COOKIE_SECURE based on environment
-# In production with HTTPS, this should be True
-SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
-
-# For production, set SESSION_COOKIE_DOMAIN to allow cookies across subdomains
-# This allows the session cookie to be accessible from both console.electrocomsolutions.in and consoleapi.electrocomsolutions.in
-SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN', None)  # Set to '.electrocomsolutions.in' in production
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in'
 
 # CSRF Cookie Configuration
-# CSRF cookie should match session cookie settings for consistency
 CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
-CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False').lower() == 'true'
-CSRF_COOKIE_DOMAIN = os.getenv('CSRF_COOKIE_DOMAIN', None)  # Match session cookie domain
-CSRF_COOKIE_PATH = '/'  # Ensure cookie is available for all paths
-CSRF_USE_SESSIONS = False  # Use cookies, not sessions, for CSRF token storage
-CSRF_COOKIE_NAME = 'csrftoken'  # Default cookie name
-
-# Django converts header name internally - we send X-CSRFToken, Django expects HTTP_X_CSRFTOKEN
-CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_DOMAIN = '.electrocomsolutions.in'
+CSRF_COOKIE_PATH = '/'
+CSRF_USE_SESSIONS = False
+CSRF_COOKIE_NAME = 'csrftoken' 
