@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, Sum, DecimalField, Value
 from django.db.models.functions import Coalesce
 from django.db import transaction
@@ -31,7 +31,7 @@ class TenderViewSet(viewsets.ModelViewSet):
     Tender Management APIs
     """
     queryset = Tender.objects.select_related('created_by', 'updated_by').prefetch_related('deposits', 'documents', 'documents__created_by').all()
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get_serializer_class(self):
         if self.action in ['list']:
@@ -708,7 +708,7 @@ class TenderViewSet(viewsets.ModelViewSet):
             404: openapi.Response(description="Tender not found")
         }
     )
-    @action(detail=True, methods=['post'], url_path='mark-emd-collected')
+    @action(detail=True, methods=['post'], url_path='mark-emd-collected', parser_classes=[JSONParser])
     def mark_emd_collected(self, request, pk=None):
         """Mark EMD as collected for a tender"""
         from django.utils import timezone
