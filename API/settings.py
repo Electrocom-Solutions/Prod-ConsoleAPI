@@ -490,25 +490,18 @@ CELERY_TASK_SEND_SENT_EVENT = True
 
 # CORS Configuration
 # Get CORS allowed origins from environment variable (comma-separated)
-# Default values for development if not set in .env
-_default_cors_origins = [
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5000",
     "http://127.0.0.1:5001",
+    "https://console.electrocomsolutions.in",
+    "http://console.electrocomsolutions.in"
 ]
-
-_cors_origins_env = os.getenv('CORS_ALLOWED_ORIGINS', '')
-if _cors_origins_env:
-    # Parse comma-separated origins from environment variable
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
-else:
-    # Use default development origins
-    CORS_ALLOWED_ORIGINS = _default_cors_origins
-
-CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -522,53 +515,38 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# CSRF Configuration for Next.js
-# Get CSRF trusted origins from environment variable (comma-separated)
-# Default values for development if not set in .env
-_default_csrf_origins = [
+CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5000",
     "http://127.0.0.1:5001",
+    "https://console.electrocomsolutions.in",
+    "http://console.electrocomsolutions.in"
 ]
-
-_csrf_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
-if _csrf_origins_env:
-    # Parse comma-separated origins from environment variable
-    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in _csrf_origins_env.split(',') if origin.strip()]
-else:
-    # Use default development origins
-    CSRF_TRUSTED_ORIGINS = _default_csrf_origins
 
 # Session Configuration
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
+
 # Set SESSION_COOKIE_SECURE based on environment
 # In production with HTTPS, this should be True
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
+
 # For production, set SESSION_COOKIE_DOMAIN to allow cookies across subdomains
 # This allows the session cookie to be accessible from both console.electrocomsolutions.in and consoleapi.electrocomsolutions.in
 SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN', None)  # Set to '.electrocomsolutions.in' in production
-if SESSION_COOKIE_DOMAIN:
-    SESSION_COOKIE_DOMAIN = SESSION_COOKIE_DOMAIN.strip()
-    if not SESSION_COOKIE_DOMAIN:
-        SESSION_COOKIE_DOMAIN = None
 
 # CSRF Cookie Configuration
 # CSRF cookie should match session cookie settings for consistency
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
-CSRF_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'  # Match session cookie secure setting
-# CSRF_COOKIE_DOMAIN should match SESSION_COOKIE_DOMAIN if set
-# This is critical for cross-subdomain setups (e.g., console.electrocomsolutions.in -> consoleapi.electrocomsolutions.in)
-# Set to the same domain as SESSION_COOKIE_DOMAIN to ensure cookies are accessible from both subdomains
-CSRF_COOKIE_DOMAIN = SESSION_COOKIE_DOMAIN  # Match session cookie domain
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False').lower() == 'true'
+CSRF_COOKIE_DOMAIN = os.getenv('CSRF_COOKIE_DOMAIN', None)  # Match session cookie domain
 CSRF_COOKIE_PATH = '/'  # Ensure cookie is available for all paths
 CSRF_USE_SESSIONS = False  # Use cookies, not sessions, for CSRF token storage
 CSRF_COOKIE_NAME = 'csrftoken'  # Default cookie name
+
 # Django converts header name internally - we send X-CSRFToken, Django expects HTTP_X_CSRFTOKEN
-# This setting is the internal header name Django uses after processing
-CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  # Internal header name Django expects (don't change this)
-# Django will accept X-CSRFToken, X-Csrftoken, or x-csrftoken headers (case-insensitive)
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'  
