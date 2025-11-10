@@ -318,3 +318,64 @@ class ProfileCreateSerializer(serializers.Serializer):
             
             return profile
 
+
+class ProfileListSerializer(serializers.ModelSerializer):
+    """Serializer for listing profiles"""
+    full_name = serializers.SerializerMethodField()
+    first_name = serializers.SerializerMethodField()
+    last_name = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    phone_number = serializers.SerializerMethodField()
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = Profile
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
+            'phone_number', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_first_name(self, obj):
+        """Get first name from user"""
+        if obj.user:
+            return obj.user.first_name or ""
+        return ""
+    
+    def get_last_name(self, obj):
+        """Get last name from user"""
+        if obj.user:
+            return obj.user.last_name or ""
+        return ""
+    
+    def get_full_name(self, obj):
+        """Get full name from user"""
+        if obj.user:
+            first_name = obj.user.first_name or ""
+            last_name = obj.user.last_name or ""
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                return full_name
+            return obj.user.username or ""
+        return ""
+    
+    def get_email(self, obj):
+        """Get email from user"""
+        if obj.user:
+            return obj.user.email or ""
+        return ""
+    
+    def get_phone_number(self, obj):
+        """Get primary phone number"""
+        try:
+            mobile = MobileNumber.objects.filter(user=obj.user, is_primary=True).first()
+            if mobile:
+                return mobile.mobile_number
+            # If no primary, get first mobile number
+            mobile = MobileNumber.objects.filter(user=obj.user).first()
+            if mobile:
+                return mobile.mobile_number
+        except:
+            pass
+        return None
+

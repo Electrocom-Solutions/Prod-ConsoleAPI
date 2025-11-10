@@ -9,11 +9,14 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Q
 from .models import Profile
 from .serializers import (
     CurrentUserProfileSerializer,
     CurrentUserProfileUpdateSerializer,
-    ProfileCreateSerializer
+    ProfileCreateSerializer,
+    ProfileListSerializer
 )
 
 
@@ -308,3 +311,95 @@ def create_profile(request):
     # Return created profile
     response_serializer = CurrentUserProfileSerializer(profile, context={'request': request})
     return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ProfilePagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+@swagger_auto_schema(
+    method='get',
+    operation_id='list_profiles',
+    operation_summary="List All Profiles",
+    operation_description="""
+    List all profiles with optional search and pagination.
+    
+    **Search:**
+    - Search by user's first name, last name, username, email, or phone number
+    - Case-insensitive search
+    
+    **Pagination:**
+    - Default page size: 20
+    - Use `page` parameter to navigate pages
+    - Use `page_size` parameter to change page size (max 100)
+    
+    **Response:**
+    Returns a paginated list of profiles with user information.
+    """,
+    tags=['Profile'],
+    manual_parameters=[
+        openapi.Parameter('search', openapi.IN_QUERY, description="Search by name, email, or phone number", type=openapi.TYPE_STRING),
+        openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+        openapi.Parameter('page_size', openapi.IN_QUERY, description="Page size (max 100)", type=openapi.TYPE_INTEGER),
+    ],
+    responses={
+        200: openapi.Response(
+            description="List of profiles",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                    'next': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+                    'previous': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+                    'results': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(type=openapi.TYPE_OBJECT)
+                    )
+                }
+            )
+        ),
+        401: openapi.Response(
+            description="Unauthorized",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING)
+                }
+            )
+        )
+    }
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_profiles(request):
+    """
+    List all profiles with search and pagination
+    """
+    from Profiles.models import MobileNumber
+    
+    queryset = Profile.objects.select_related('user').prefetch_related('user__mobile_numbers').all()
+    
+    # Search functionality
+    search_query = request.query_params.get('search', '').strip()
+    if search_query:
+        queryset = queryset.filter(
+            Q(user__first_name__icontains=search_query) |
+            Q(user__last_name__icontains=search_query) |
+            Q(user__username__icontains=search_query) |
+            Q(user__email__icontains=search_query) |
+            Q(user__mobile_numbers__mobile_number__icontains=search_query)
+        ).distinct()
+    
+    # Pagination
+    paginator = ProfilePagination()
+    page = paginator.paginate_queryset(queryset, request)
+    
+    if page is not None:
+        serializer = ProfileListSerializer(page, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
+    
+    # If no pagination
+    serializer = ProfileListSerializer(queryset, many=True, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
