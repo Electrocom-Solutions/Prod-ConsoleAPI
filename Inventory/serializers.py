@@ -11,7 +11,7 @@ class StockListSerializer(serializers.ModelSerializer):
         model = Stock
         fields = [
             'id', 'name', 'unit_of_measure', 'quantity', 'price',
-            'description', 'created_at', 'updated_at'
+            'min_threshold', 'description', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -22,7 +22,7 @@ class StockDetailSerializer(serializers.ModelSerializer):
         model = Stock
         fields = [
             'id', 'name', 'unit_of_measure', 'quantity', 'price',
-            'description', 'created_at', 'updated_at',
+            'min_threshold', 'description', 'created_at', 'updated_at',
             'created_by', 'updated_by'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
@@ -33,7 +33,7 @@ class StockCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stock
         fields = [
-            'id', 'name', 'unit_of_measure', 'quantity', 'price', 'description'
+            'id', 'name', 'unit_of_measure', 'quantity', 'price', 'min_threshold', 'description'
         ]
         read_only_fields = ['id']
     
@@ -49,7 +49,7 @@ class StockUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stock
         fields = [
-            'id', 'name', 'unit_of_measure', 'quantity', 'price', 'description'
+            'id', 'name', 'unit_of_measure', 'quantity', 'price', 'min_threshold', 'description'
         ]
         read_only_fields = ['id']
     

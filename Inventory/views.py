@@ -110,7 +110,7 @@ class StockViewSet(viewsets.ModelViewSet):
         **What it returns:**
         - total_resources: Total number of stock items in the inventory
         - total_inventory_value: Total value of all stock items (sum of quantity * price)
-        - low_stock_items: Number of stock items with quantity less than 100
+        - low_stock_items: Number of stock items with quantity below their min_threshold
         
         **Use Case:**
         Use this endpoint to populate dashboard tiles showing key metrics for stock management.
@@ -124,7 +124,7 @@ class StockViewSet(viewsets.ModelViewSet):
                     properties={
                         'total_resources': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total number of stock items'),
                         'total_inventory_value': openapi.Schema(type=openapi.TYPE_NUMBER, description='Total inventory value'),
-                        'low_stock_items': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of low stock items (quantity < 100)')
+                        'low_stock_items': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of low stock items (quantity < min_threshold)')
                     }
                 )
             )
@@ -145,7 +145,10 @@ class StockViewSet(viewsets.ModelViewSet):
         for stock in stocks:
             total_value = float(stock.quantity) * float(stock.price)
             total_inventory_value += total_value
-            if stock.quantity < 100:
+            # Check if stock quantity is below the min_threshold
+            # Only consider it low stock if min_threshold is set (> 0) and quantity is below it
+            min_threshold_value = float(stock.min_threshold) if stock.min_threshold is not None else 0
+            if min_threshold_value > 0 and float(stock.quantity) < min_threshold_value:
                 low_stock_items += 1
         
         data = {
@@ -190,6 +193,7 @@ class StockViewSet(viewsets.ModelViewSet):
         - price: Unit Price (price per unit)
         
         **Optional Fields:**
+        - min_threshold: Minimum threshold for stock quantity (default: 0). If quantity falls below this value, the stock is considered 'low stock'.
         - description: Description of the stock item
         
         **Response:**
@@ -231,6 +235,7 @@ class StockViewSet(viewsets.ModelViewSet):
         - unit_of_measure: Unit of Measure
         - quantity: Stock Count
         - price: Unit Price
+        - min_threshold: Minimum threshold for stock quantity
         - description: Description
         
         **Response:**

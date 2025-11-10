@@ -726,9 +726,14 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
         
         # Determine if email should be sent immediately or scheduled
         current_time = timezone.now()
+        
+        # Log for debugging
+        logger.info(f"Email send request - scheduled_at: {scheduled_at}, current_time: {current_time}, recipients_count: {len(recipients)}")
+        
         send_immediately = scheduled_at is None or scheduled_at <= current_time
         
         if send_immediately:
+            logger.info("Sending email immediately")
             # Send email immediately
             try:
                 # Send email to all recipients
@@ -774,23 +779,33 @@ class EmailTemplateViewSet(viewsets.ModelViewSet):
             # Schedule email for later
             from Scheduler.tasks import send_scheduled_email
             
+            logger.info(f"Scheduling email for {scheduled_at} with {len(recipients)} recipients")
+            
             # Create scheduled email task
             try:
+                # Ensure recipients is a list (it should be from serializer validation)
+                recipients_list = recipients if isinstance(recipients, list) else list(recipients) if recipients else []
+                
                 # Schedule the email sending task
-                send_scheduled_email.apply_async(
-                    args=[template.id, recipients, placeholder_values],
+                # Note: Celery's apply_async expects the eta to be a datetime object
+                result = send_scheduled_email.apply_async(
+                    args=[template.id, recipients_list, placeholder_values or {}],
                     eta=scheduled_at
                 )
                 
+                logger.info(f"Email scheduled successfully with task ID: {result.id}")
+                
                 return Response({
                     'status': 'scheduled',
-                    'message': f'Email scheduled for {scheduled_at}',
-                    'recipients_count': len(recipients),
+                    'message': f'Email scheduled for {scheduled_at.strftime("%Y-%m-%d %H:%M:%S")}',
+                    'recipients_count': len(recipients_list),
                     'scheduled_at': scheduled_at.isoformat(),
-                    'sent_at': None
+                    'sent_at': None,
+                    'task_id': result.id
                 }, status=status.HTTP_200_OK)
                 
             except Exception as e:
+                logger.error(f"Error scheduling email: {str(e)}", exc_info=True)
                 return Response(
                     {'error': f'Error scheduling email: {str(e)}'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
