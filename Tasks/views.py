@@ -223,16 +223,43 @@ class TaskViewSet(viewsets.ModelViewSet):
         else:
             total_resource_cost = 0
         
-        data = {
-            'total_tasks': total_tasks,
-            'pending_approval': pending_approval,
-            'approved_tasks': approved_tasks,
-            'total_timings': round(total_timings, 2),
-            'total_resource_cost': float(total_resource_cost)
-        }
-        
-        serializer = TaskStatisticsSerializer(data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            from decimal import Decimal
+            data = {
+                'total_tasks': total_tasks,
+                'pending_approval': pending_approval,
+                'approved_tasks': approved_tasks,
+                'total_timings': Decimal(str(round(total_timings, 2))),
+                'total_resource_cost': Decimal(str(total_resource_cost))
+            }
+            
+            serializer = TaskStatisticsSerializer(data=data)
+            if not serializer.is_valid():
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Statistics serialization error: {serializer.errors}")
+                return Response(
+                    {'error': 'Serialization error', 'details': serializer.errors},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in task statistics: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            from django.conf import settings
+            error_response = {
+                'error': 'Failed to fetch task statistics',
+                'message': str(e)
+            }
+            if settings.DEBUG:
+                error_response['traceback'] = traceback.format_exc()
+            
+            return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @swagger_auto_schema(
         operation_id='task_list',

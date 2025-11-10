@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, DecimalField, Value
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from datetime import date, datetime
@@ -377,19 +377,47 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         ).values('employee').distinct().count()
         
         # Monthly payroll (sum of all employees' monthly salaries)
-        monthly_payroll = Employee.objects.aggregate(
-            total=Coalesce(Sum('monthly_salary'), 0)
-        )['total'] or 0
+        monthly_payroll_result = Employee.objects.aggregate(
+            total=Coalesce(
+                Sum('monthly_salary'),
+                Value(0, output_field=DecimalField(max_digits=15, decimal_places=2)),
+                output_field=DecimalField(max_digits=15, decimal_places=2)
+            )
+        )
+        monthly_payroll = monthly_payroll_result['total'] or 0
         
-        data = {
-            'total_employees': total_employees,
-            'total_present': total_present,
-            'total_absent': total_absent,
-            'monthly_payroll': float(monthly_payroll)
-        }
-        
-        serializer = EmployeeStatisticsSerializer(data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            data = {
+                'total_employees': total_employees,
+                'total_present': total_present,
+                'total_absent': total_absent,
+                'monthly_payroll': float(monthly_payroll) if monthly_payroll else 0.0
+            }
+            
+            serializer = EmployeeStatisticsSerializer(data=data)
+            if not serializer.is_valid():
+                return Response(
+                    {'error': 'Serialization error', 'details': serializer.errors},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in employee statistics: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            from django.conf import settings
+            error_response = {
+                'error': 'Failed to fetch employee statistics',
+                'message': str(e)
+            }
+            if settings.DEBUG:
+                error_response['traceback'] = traceback.format_exc()
+            
+            return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ContractWorkerViewSet(viewsets.ModelViewSet):
@@ -492,9 +520,14 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         total_assigned = ContractWorker.objects.filter(project__isnull=False).count()
         
         # Monthly payroll (sum of all workers' monthly salaries)
-        monthly_payroll = ContractWorker.objects.aggregate(
-            total=Coalesce(Sum('monthly_salary'), 0)
-        )['total'] or 0
+        monthly_payroll_result = ContractWorker.objects.aggregate(
+            total=Coalesce(
+                Sum('monthly_salary'),
+                Value(0, output_field=DecimalField(max_digits=15, decimal_places=2)),
+                output_field=DecimalField(max_digits=15, decimal_places=2)
+            )
+        )
+        monthly_payroll = monthly_payroll_result['total'] or 0
         
         data = {
             'total_workers': total_workers,

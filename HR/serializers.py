@@ -9,6 +9,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
     phone_number = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
     availability_status = serializers.SerializerMethodField()
     profile_id = serializers.IntegerField(source='profile.id', read_only=True)
     
@@ -16,7 +17,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             'id', 'employee_code', 'profile_id', 'full_name', 'email', 'phone_number',
-            'designation', 'availability_status', 'created_at'
+            'photo_url', 'designation', 'availability_status', 'created_at'
         ]
         read_only_fields = ['created_at']
     
@@ -37,6 +38,15 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     def get_phone_number(self, obj):
         """Get phone number - this would need to be stored in Profile or User model"""
         # Since phone is not in Profile, we'll return None or extract from user if available
+        return None
+    
+    def get_photo_url(self, obj):
+        """Get photo URL from profile"""
+        if obj.profile and obj.profile.photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile.photo.url)
+            return obj.profile.photo.url
         return None
     
     def get_availability_status(self, obj):
