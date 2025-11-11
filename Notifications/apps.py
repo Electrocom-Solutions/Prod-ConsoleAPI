@@ -11,6 +11,10 @@ class NotificationsConfig(AppConfig):
     
     def ready(self):
         """Initialize Firebase Admin SDK when Django starts"""
+        # Use both print and logger for visibility
+        print("🔧 Notifications app ready() called - initializing Firebase Admin SDK...")
+        logger.info("Notifications app ready() called - initializing Firebase Admin SDK...")
+        
         try:
             import firebase_admin
             from firebase_admin import credentials
@@ -18,7 +22,9 @@ class NotificationsConfig(AppConfig):
             # Check if already initialized
             try:
                 firebase_admin.get_app()
-                logger.info("Firebase Admin SDK already initialized")
+                msg = "Firebase Admin SDK already initialized"
+                print(f"✅ {msg}")
+                logger.info(msg)
                 return
             except ValueError:
                 # Not initialized, proceed with initialization
@@ -26,24 +32,40 @@ class NotificationsConfig(AppConfig):
             
             # Try to get credentials from environment variable
             cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', None)
+            print(f"🔍 Checking credentials: GOOGLE_APPLICATION_CREDENTIALS = {cred_path}")
+            
             if cred_path and os.path.exists(cred_path):
                 try:
+                    print(f"📁 Credentials file exists: {cred_path}")
                     cred = credentials.Certificate(cred_path)
                     firebase_admin.initialize_app(cred)
-                    logger.info(f"✅ Firebase Admin SDK initialized from {cred_path}")
+                    msg = f"✅ Firebase Admin SDK initialized from {cred_path}"
+                    print(msg)
+                    logger.info(msg)
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to initialize Firebase Admin SDK from {cred_path}: {str(e)}")
+                    msg = f"⚠️ Failed to initialize Firebase Admin SDK from {cred_path}: {str(e)}"
+                    print(msg)
+                    logger.warning(msg)
             else:
                 # Try default credentials (for GCP environments)
                 try:
+                    print("🔍 Trying default credentials...")
                     firebase_admin.initialize_app()
-                    logger.info("✅ Firebase Admin SDK initialized with default credentials")
+                    msg = "✅ Firebase Admin SDK initialized with default credentials"
+                    print(msg)
+                    logger.info(msg)
                 except Exception as e:
                     if cred_path:
-                        logger.warning(f"⚠️ Firebase Admin SDK initialization failed. Credentials path: {cred_path}, Error: {str(e)}")
+                        msg = f"⚠️ Firebase Admin SDK initialization failed. Credentials path: {cred_path}, Error: {str(e)}"
                     else:
-                        logger.warning(f"⚠️ Firebase Admin SDK initialization failed. GOOGLE_APPLICATION_CREDENTIALS not set. Error: {str(e)}")
+                        msg = f"⚠️ Firebase Admin SDK initialization failed. GOOGLE_APPLICATION_CREDENTIALS not set. Error: {str(e)}"
+                    print(msg)
+                    logger.warning(msg)
         except ImportError:
-            logger.warning("⚠️ firebase-admin package not installed. FCM push notifications will not work.")
+            msg = "⚠️ firebase-admin package not installed. FCM push notifications will not work."
+            print(msg)
+            logger.warning(msg)
         except Exception as e:
-            logger.error(f"❌ Unexpected error initializing Firebase Admin SDK: {str(e)}")
+            msg = f"❌ Unexpected error initializing Firebase Admin SDK: {str(e)}"
+            print(msg)
+            logger.error(msg)
