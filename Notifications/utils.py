@@ -81,6 +81,11 @@ def send_fcm_push_notification(user, title, message, notification_type, notifica
         
         # Send message
         try:
+            # Log details for debugging
+            logger.info(f"Attempting to send FCM to {len(device_tokens)} device(s) for user {user.username}")
+            logger.info(f"Project ID: {firebase_admin.get_app().project_id}")
+            logger.info(f"First token (first 50 chars): {list(device_tokens)[0][:50] if device_tokens else 'None'}...")
+            
             response = messaging.send_multicast(message_obj)
             
             # Handle invalid tokens
@@ -100,6 +105,11 @@ def send_fcm_push_notification(user, title, message, notification_type, notifica
         except Exception as send_error:
             logger.error(f"Error in messaging.send_multicast: {str(send_error)}")
             logger.error(f"Error type: {type(send_error).__name__}")
+            # Try to get more details about the error
+            if hasattr(send_error, 'http_response'):
+                logger.error(f"HTTP Response: {send_error.http_response}")
+            if hasattr(send_error, 'cause'):
+                logger.error(f"Error cause: {send_error.cause}")
             # Re-raise to be caught by outer exception handler
             raise
         
