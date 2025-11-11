@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Employee, Attendance, ContractWorker, PayrollRecord, HolidayCalander
-from Profiles.models import Profile
+from Profiles.models import Profile, MobileNumber
 from Accounts.models import BankAccount
 
 
@@ -36,8 +36,14 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         return None
     
     def get_phone_number(self, obj):
-        """Get phone number - this would need to be stored in Profile or User model"""
-        # Since phone is not in Profile, we'll return None or extract from user if available
+        """Get phone number from MobileNumber model"""
+        if obj.profile and obj.profile.user:
+            # Get primary mobile number or first mobile number
+            mobile = obj.profile.user.mobile_numbers.filter(is_primary=True).first()
+            if not mobile:
+                mobile = obj.profile.user.mobile_numbers.first()
+            if mobile:
+                return mobile.mobile_number
         return None
     
     def get_photo_url(self, obj):
@@ -106,7 +112,14 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         return None
     
     def get_phone_number(self, obj):
-        """Get phone number - would need to be stored separately"""
+        """Get phone number from MobileNumber model"""
+        if obj.profile and obj.profile.user:
+            # Get primary mobile number or first mobile number
+            mobile = obj.profile.user.mobile_numbers.filter(is_primary=True).first()
+            if not mobile:
+                mobile = obj.profile.user.mobile_numbers.first()
+            if mobile:
+                return mobile.mobile_number
         return None
     
     def get_date_of_birth(self, obj):
@@ -287,6 +300,31 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                 created_by=request_user if request_user.is_authenticated else None
             )
             
+            # Create mobile number if provided
+            if phone_number and phone_number.strip():
+                # Check if mobile number already exists for another user
+                existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number.strip()).first()
+                if existing_mobile:
+                    # If exists for different user, raise error
+                    if existing_mobile.user != user:
+                        raise serializers.ValidationError({
+                            'phone_number': 'This mobile number is already associated with another user.'
+                        })
+                    # If exists for same user, update it to be primary
+                    existing_mobile.is_primary = True
+                    existing_mobile.updated_by = request_user if request_user.is_authenticated else None
+                    existing_mobile.save()
+                else:
+                    # Mark any existing mobile numbers for this user as non-primary
+                    MobileNumber.objects.filter(user=user).update(is_primary=False)
+                    # Create new mobile number as primary
+                    MobileNumber.objects.create(
+                        user=user,
+                        mobile_number=phone_number.strip(),
+                        is_primary=True,
+                        created_by=request_user if request_user.is_authenticated else None
+                    )
+            
             return employee
     
     def update(self, instance, validated_data):
@@ -348,6 +386,39 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                 user = self.context['request'].user
                 profile.updated_by = user if user.is_authenticated else None
                 profile.save()
+            
+            # Update mobile number if provided
+            if phone_number is not None:
+                if instance.profile and instance.profile.user:
+                    user = instance.profile.user
+                    request_user = self.context['request'].user
+                    
+                    if phone_number and phone_number.strip():
+                        # Check if mobile number already exists for another user
+                        existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number.strip()).first()
+                        if existing_mobile:
+                            # If exists for different user, raise error
+                            if existing_mobile.user != user:
+                                raise serializers.ValidationError({
+                                    'phone_number': 'This mobile number is already associated with another user.'
+                                })
+                            # If exists for same user, update it to be primary
+                            existing_mobile.is_primary = True
+                            existing_mobile.updated_by = request_user if request_user.is_authenticated else None
+                            existing_mobile.save()
+                        else:
+                            # Mark any existing mobile numbers for this user as non-primary
+                            MobileNumber.objects.filter(user=user).update(is_primary=False)
+                            # Create new mobile number as primary
+                            MobileNumber.objects.create(
+                                user=user,
+                                mobile_number=phone_number.strip(),
+                                is_primary=True,
+                                created_by=request_user if request_user.is_authenticated else None
+                            )
+                    else:
+                        # If phone_number is empty, remove primary status from all mobile numbers
+                        MobileNumber.objects.filter(user=user).update(is_primary=False)
             
             # Update employee
             user = self.context['request'].user

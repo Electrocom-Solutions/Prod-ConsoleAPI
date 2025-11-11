@@ -490,7 +490,9 @@ CELERY_TASK_SEND_SENT_EVENT = True
 
 # CORS Configuration
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False
+# In development, allow all origins for mobile app testing
+# In production, set to False and specify allowed origins
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in development, restrict in production
 CORS_ALLOWED_ORIGINS = [
     "https://console.electrocomsolutions.in",
     "http://localhost:3000",
@@ -499,6 +501,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5000",
     "http://127.0.0.1:5001",
+    # Add your local IP for mobile device testing
+    "http://10.78.104.57:8000",
 ]
 
 CORS_ALLOW_HEADERS = [
