@@ -51,7 +51,12 @@ class NotificationViewSet(viewsets.ModelViewSet):
             # Filter by scheduled status
             if show_scheduled and show_scheduled.lower() == 'true':
                 # Show scheduled notifications (not yet sent)
+                # Group by title, message, scheduled_at, and created_by to avoid duplicates
                 queryset = queryset.filter(sent_at__isnull=True, scheduled_at__isnull=False)
+                # Use distinct with specific fields to get unique scheduled notifications
+                # Note: distinct() with field names requires ordering by those fields first (PostgreSQL requirement)
+                # We order by scheduled_at first to get the earliest notification of each group, then by other fields for distinct
+                queryset = queryset.order_by('scheduled_at', 'title', 'message', 'created_by').distinct('scheduled_at', 'title', 'message', 'created_by')
             else:
                 # Show sent notifications (default behavior)
                 queryset = queryset.filter(sent_at__isnull=False)
@@ -89,7 +94,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_read=is_read)
         
         # Order by scheduled_at for scheduled notifications, created_at for sent notifications
-        if show_scheduled and show_scheduled.lower() == 'true':
+        # Note: For scheduled notifications with distinct(), we already ordered in the distinct() call above
+        if show_scheduled and show_scheduled.lower() == 'true' and show_sent_by_me and show_sent_by_me.lower() == 'true':
+            # Already ordered by distinct fields, but reorder by scheduled_at for final display
+            # We need to re-query to avoid ordering conflict with distinct
+            from django.db.models import Min
+            # Get unique scheduled notifications grouped by title, message, scheduled_at, created_by
+            # Then order by scheduled_at
+            return queryset.order_by('scheduled_at')
+        elif show_scheduled and show_scheduled.lower() == 'true':
             return queryset.order_by('scheduled_at')
         return queryset.order_by('-created_at')
     
@@ -466,6 +479,87 @@ class NotificationViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': 'Either notification_ids or mark_all must be provided'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @swagger_auto_schema(
+        operation_id='notification_cancel_scheduled',
+        operation_summary="Cancel Scheduled Notification",
+        operation_description="""
+        Cancel a scheduled notification by deleting all notifications with the same title, message, scheduled_at, and created_by.
+        
+        **What it does:**
+        - Finds all scheduled notifications matching the given notification's title, message, scheduled_at, and created_by
+        - Deletes all matching scheduled notifications (not yet sent)
+        - Returns the count of notifications cancelled
+        
+        **Note:**
+        Only the user who created the scheduled notification can cancel it.
+        """,
+        tags=['Notifications'],
+        responses={
+            200: openapi.Response(
+                description="Scheduled notification cancelled successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'cancelled_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of notifications cancelled'),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message')
+                    }
+                )
+            ),
+            404: openapi.Response(description="Notification not found"),
+            403: openapi.Response(description="You can only cancel notifications you created")
+        }
+    )
+    @action(detail=True, methods=['post'], url_path='cancel-scheduled')
+    def cancel_scheduled(self, request, pk=None):
+        """Cancel a scheduled notification"""
+        from django.db import transaction
+        
+        notification = self.get_object()
+        
+        # Check if user created this notification
+        if notification.created_by != request.user:
+            return Response(
+                {'error': 'You can only cancel notifications you created'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if notification is scheduled (not yet sent)
+        if not notification.scheduled_at or notification.sent_at:
+            return Response(
+                {'error': 'This notification is not scheduled or has already been sent'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                # Find all matching scheduled notifications
+                matching_notifications = Notification.objects.filter(
+                    title=notification.title,
+                    message=notification.message,
+                    scheduled_at=notification.scheduled_at,
+                    created_by=notification.created_by,
+                    sent_at__isnull=True,
+                    scheduled_at__isnull=False
+                )
+                
+                cancelled_count = matching_notifications.count()
+                
+                # Delete all matching scheduled notifications
+                matching_notifications.delete()
+                
+                return Response({
+                    'cancelled_count': cancelled_count,
+                    'message': f'Successfully cancelled {cancelled_count} scheduled notification(s)'
+                }, status=status.HTTP_200_OK)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error cancelling scheduled notification: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Failed to cancel scheduled notification: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     def destroy(self, request, *args, **kwargs):

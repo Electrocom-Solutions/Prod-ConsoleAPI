@@ -12,15 +12,31 @@ class NotificationListSerializer(serializers.ModelSerializer):
     recipient_username = serializers.CharField(source='recipient.username', read_only=True)
     type_display = serializers.CharField(source='get_type_display', read_only=True)
     channel_display = serializers.CharField(source='get_channel_display', read_only=True)
+    recipient_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
         fields = [
             'id', 'title', 'message', 'type', 'type_display', 'channel', 'channel_display',
             'is_read', 'scheduled_at', 'sent_at', 'created_at', 'created_by', 'created_by_username',
-            'recipient', 'recipient_username'
+            'recipient', 'recipient_username', 'recipient_count'
         ]
         read_only_fields = ['created_at', 'sent_at', 'created_by']
+    
+    def get_recipient_count(self, obj):
+        """Get count of recipients for scheduled notifications (grouped by title, message, scheduled_at, created_by)"""
+        # Only calculate for scheduled notifications (not yet sent)
+        if obj.scheduled_at and not obj.sent_at:
+            from .models import Notification
+            count = Notification.objects.filter(
+                title=obj.title,
+                message=obj.message,
+                scheduled_at=obj.scheduled_at,
+                created_by=obj.created_by,
+                sent_at__isnull=True
+            ).count()
+            return count
+        return None
 
 
 class NotificationDetailSerializer(serializers.ModelSerializer):
