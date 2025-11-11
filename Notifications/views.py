@@ -515,8 +515,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def cancel_scheduled(self, request, pk=None):
         """Cancel a scheduled notification"""
         from django.db import transaction
+        from django.shortcuts import get_object_or_404
         
-        notification = self.get_object()
+        # Get the notification directly (bypass get_queryset which may filter it out due to distinct)
+        notification = get_object_or_404(Notification, pk=pk)
         
         # Check if user created this notification
         if notification.created_by != request.user:
@@ -562,18 +564,117 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    def destroy(self, request, *args, **kwargs):
-        """Delete a notification"""
-        notification = self.get_object()
+    @swagger_auto_schema(
+        operation_id='notification_bulk_delete',
+        operation_summary="Bulk Delete Notifications",
+        operation_description="""
+        Delete multiple notifications at once.
         
-        # Ensure user can only delete their own notifications
-        if notification.recipient != request.user:
+        **What it does:**
+        - Deletes notifications by their IDs
+        - For owners: Can delete notifications they created (sent notifications)
+        - For regular users: Can only delete notifications they received
+        
+        **Request Body:**
+        - notification_ids: List of notification IDs to delete
+        
+        **Response:**
+        Returns count of deleted notifications and any errors.
+        """,
+        tags=['Notifications'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'notification_ids': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(type=openapi.TYPE_INTEGER),
+                    description='List of notification IDs to delete'
+                )
+            },
+            required=['notification_ids']
+        ),
+        responses={
+            200: openapi.Response(
+                description="Notifications deleted successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'deleted_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of notifications deleted'),
+                        'skipped_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of notifications skipped'),
+                        'errors': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_STRING), description='List of error messages')
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid request data")
+        }
+    )
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Bulk delete notifications"""
+        notification_ids = request.data.get('notification_ids', [])
+        
+        if not notification_ids or not isinstance(notification_ids, list):
             return Response(
-                {'error': 'You can only delete your own notifications'},
-                status=status.HTTP_403_FORBIDDEN
+                {'error': 'notification_ids must be a non-empty list'},
+                status=status.HTTP_400_BAD_REQUEST
             )
         
-        return super().destroy(request, *args, **kwargs)
+        # Get all notifications that the user can delete
+        # Owners can delete notifications they created, regular users can delete notifications they received
+        if request.user.is_superuser:
+            # Owner: can delete notifications they created
+            notifications = Notification.objects.filter(
+                id__in=notification_ids,
+                created_by=request.user
+            )
+        else:
+            # Regular user: can only delete notifications they received
+            notifications = Notification.objects.filter(
+                id__in=notification_ids,
+                recipient=request.user
+            )
+        
+        deleted_count = notifications.count()
+        skipped_count = len(notification_ids) - deleted_count
+        
+        # Delete the notifications
+        notifications.delete()
+        
+        errors = None
+        if skipped_count > 0:
+            errors = [f'Skipped {skipped_count} notification(s) that were not found or you do not have permission to delete']
+        
+        return Response({
+            'deleted_count': deleted_count,
+            'skipped_count': skipped_count,
+            'errors': errors
+        }, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Delete a notification"""
+        from django.shortcuts import get_object_or_404
+        
+        notification = get_object_or_404(Notification, pk=kwargs.get('pk'))
+        
+        # Owners can delete notifications they created (for sent notifications view)
+        # Regular users can only delete notifications they received
+        if request.user.is_superuser:
+            # Owner: can delete notifications they created
+            if notification.created_by != request.user:
+                return Response(
+                    {'error': 'You can only delete notifications you created'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        else:
+            # Regular user: can only delete notifications they received
+            if notification.recipient != request.user:
+                return Response(
+                    {'error': 'You can only delete your own notifications'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        notification.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class EmailTemplateViewSet(viewsets.ModelViewSet):
