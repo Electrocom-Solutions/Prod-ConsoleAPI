@@ -195,7 +195,7 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(write_only=True, required=True)
     last_name = serializers.CharField(write_only=True, required=True)
     email = serializers.EmailField(write_only=True, required=True)
-    phone_number = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+    phone_number = serializers.CharField(write_only=True, required=True)
     photo = serializers.ImageField(write_only=True, required=False, allow_null=True)
     date_of_birth = serializers.DateField(write_only=True, required=False, allow_null=True)
     gender = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
@@ -232,7 +232,7 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         first_name = validated_data.pop('first_name')
         last_name = validated_data.pop('last_name')
         email = validated_data.pop('email')
-        phone_number = validated_data.pop('phone_number', None)
+        phone_number = validated_data.pop('phone_number')
         photo = validated_data.pop('photo', None)
         date_of_birth = validated_data.pop('date_of_birth', None)
         gender = validated_data.pop('gender', None)
@@ -263,11 +263,13 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                 username = f"{base_username}_{counter}"
                 counter += 1
             
+            # Set password to phone_number (mobile number)
             user = User.objects.create_user(
                 username=username,
                 email=email,
                 first_name=first_name,
-                last_name=last_name
+                last_name=last_name,
+                password=phone_number
             )
             
             # Create profile

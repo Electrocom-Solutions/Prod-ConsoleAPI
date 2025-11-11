@@ -98,6 +98,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         
+        # Filter by approval_status
+        approval_status_filter = self.request.query_params.get('approval_status', None)
+        if approval_status_filter:
+            queryset = queryset.filter(approval_status=approval_status_filter)
+        
         # Date filter
         date_filter = self.request.query_params.get('date_filter', 'all').lower()
         start_date, end_date = self._get_date_range(date_filter)
@@ -481,11 +486,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         try:
             with transaction.atomic():
-                # Get tasks that are in Draft status
-                tasks_to_approve = Task.objects.filter(
-                    id__in=task_ids,
-                    status=Task.Status.DRAFT
-                )
+                # Get all valid tasks (no status restriction for approval)
+                tasks_to_approve = Task.objects.filter(id__in=task_ids)
                 
                 approved_count = 0
                 skipped_count = 0
@@ -493,8 +495,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 
                 for task in tasks_to_approve:
                     try:
-                        # Update task status to In Progress (approved)
-                        task.status = Task.Status.IN_PROGRESS
+                        # Update only approval_status to approved (don't change task status)
                         task.approval_status = Task.ApprovalStatus.APPROVED
                         task.updated_by = request.user
                         task.save()
@@ -523,7 +524,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                     except Exception as e:
                         errors.append(f"Error approving task {task.id}: {str(e)}")
                 
-                # Count skipped tasks (not in Draft status)
+                # Count skipped tasks (tasks that don't exist or already approved)
                 skipped_count = len(task_ids) - tasks_to_approve.count()
                 
                 # Check for invalid task IDs
@@ -531,7 +532,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 invalid_task_ids = set(task_ids) - valid_task_ids
                 
                 if invalid_task_ids:
-                    # Check if they exist but are not in Draft status
+                    # Check if they exist
                     existing_tasks = Task.objects.filter(id__in=invalid_task_ids)
                     existing_ids = set(existing_tasks.values_list('id', flat=True))
                     non_existent_ids = invalid_task_ids - existing_ids

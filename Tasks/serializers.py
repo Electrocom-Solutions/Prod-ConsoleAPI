@@ -60,7 +60,7 @@ class TaskListSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'task_name', 'task_date', 'location', 'time_taken_minutes',
-            'time_taken_hours', 'status', 'employee', 'employee_name',
+            'time_taken_hours', 'status', 'approval_status', 'employee', 'employee_name',
             'project', 'project_name', 'client_name', 'created_at'
         ]
         read_only_fields = ['created_at']
@@ -95,7 +95,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'task_name', 'task_description', 'task_date', 'location',
-            'time_taken_minutes', 'time_taken_hours', 'status', 'internal_notes',
+            'time_taken_minutes', 'time_taken_hours', 'status', 'approval_status', 'internal_notes',
             'employee', 'employee_name', 'project', 'project_name', 'client_name',
             'attachments', 'resources', 'activity_feed',
             'created_at', 'updated_at', 'created_by', 'created_by_username',
@@ -150,8 +150,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            'id', 'employee', 'project', 'deadline', 'task_name', 'status',
-            'estimated_time', 'location', 'task_description'
+            'id', 'employee', 'project', 'deadline', 'task_name', 'status', 'approval_status',
+            'estimated_time', 'location', 'task_description', 'internal_notes'
         ]
         read_only_fields = ['id']
     
