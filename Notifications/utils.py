@@ -80,22 +80,28 @@ def send_fcm_push_notification(user, title, message, notification_type, notifica
         )
         
         # Send message
-        response = messaging.send_multicast(message_obj)
-        
-        # Handle invalid tokens
-        if response.failure_count > 0:
-            invalid_tokens = []
-            for idx, result in enumerate(response.responses):
-                if not result.success:
-                    invalid_tokens.append(list(device_tokens)[idx])
-                    logger.warning(f"Failed to send to token: {result.exception}")
+        try:
+            response = messaging.send_multicast(message_obj)
             
-            # Mark invalid tokens as inactive
-            if invalid_tokens:
-                DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
-        
-        logger.info(f"Sent push notification to {response.success_count} devices for user {user.username}")
-        return response.success_count
+            # Handle invalid tokens
+            if response.failure_count > 0:
+                invalid_tokens = []
+                for idx, result in enumerate(response.responses):
+                    if not result.success:
+                        invalid_tokens.append(list(device_tokens)[idx])
+                        logger.warning(f"Failed to send to token: {result.exception}")
+                
+                # Mark invalid tokens as inactive
+                if invalid_tokens:
+                    DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
+            
+            logger.info(f"Sent push notification to {response.success_count} devices for user {user.username}")
+            return response.success_count
+        except Exception as send_error:
+            logger.error(f"Error in messaging.send_multicast: {str(send_error)}")
+            logger.error(f"Error type: {type(send_error).__name__}")
+            # Re-raise to be caught by outer exception handler
+            raise
         
     except ImportError:
         logger.warning("firebase-admin not installed. Skipping push notification.")
