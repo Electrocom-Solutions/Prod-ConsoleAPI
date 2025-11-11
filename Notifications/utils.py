@@ -69,41 +69,65 @@ def send_fcm_push_notification(user, title, message, notification_type, notifica
             'notification_type': notification_type,
         }
         
-        # Create message
-        message_obj = messaging.MulticastMessage(
-            notification=messaging.Notification(
-                title=title,
-                body=message,
-            ),
-            data=notification_data,
-            tokens=list(device_tokens),
-        )
+        # Create messages for all tokens
+        # Use send_all which is more compatible across versions
+        messages = []
+        for token in device_tokens:
+            fcm_message = messaging.Message(
+                notification=messaging.Notification(
+                    title=title,
+                    body=message,
+                ),
+                data=notification_data,
+                token=token,
+            )
+            messages.append(fcm_message)
         
-        # Send message
+        # Send messages
         try:
             # Log details for debugging
             logger.info(f"Attempting to send FCM to {len(device_tokens)} device(s) for user {user.username}")
             logger.info(f"Project ID: {firebase_admin.get_app().project_id}")
-            logger.info(f"First token (first 50 chars): {list(device_tokens)[0][:50] if device_tokens else 'None'}...")
+            if device_tokens:
+                logger.info(f"First token (first 50 chars): {list(device_tokens)[0][:50]}...")
             
-            response = messaging.send_multicast(message_obj)
-            
-            # Handle invalid tokens
-            if response.failure_count > 0:
+            # Try send_all first (more compatible)
+            if hasattr(messaging, 'send_all'):
+                response = messaging.send_all(messages)
+                success_count = response.success_count
+                failure_count = response.failure_count
+                
+                # Handle invalid tokens
+                if failure_count > 0:
+                    invalid_tokens = []
+                    for idx, result in enumerate(response.responses):
+                        if not result.success:
+                            invalid_tokens.append(list(device_tokens)[idx])
+                            logger.warning(f"Failed to send to token: {result.exception}")
+                    
+                    # Mark invalid tokens as inactive
+                    if invalid_tokens:
+                        DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
+            else:
+                # Fallback: send individually
+                success_count = 0
                 invalid_tokens = []
-                for idx, result in enumerate(response.responses):
-                    if not result.success:
+                for idx, fcm_msg in enumerate(messages):
+                    try:
+                        messaging.send(fcm_msg)
+                        success_count += 1
+                    except Exception as e:
                         invalid_tokens.append(list(device_tokens)[idx])
-                        logger.warning(f"Failed to send to token: {result.exception}")
+                        logger.warning(f"Failed to send to token: {e}")
                 
                 # Mark invalid tokens as inactive
                 if invalid_tokens:
                     DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
             
-            logger.info(f"Sent push notification to {response.success_count} devices for user {user.username}")
-            return response.success_count
+            logger.info(f"Sent push notification to {success_count} devices for user {user.username}")
+            return success_count
         except Exception as send_error:
-            logger.error(f"Error in messaging.send_multicast: {str(send_error)}")
+            logger.error(f"Error sending FCM messages: {str(send_error)}")
             logger.error(f"Error type: {type(send_error).__name__}")
             # Try to get more details about the error
             if hasattr(send_error, 'http_response'):
