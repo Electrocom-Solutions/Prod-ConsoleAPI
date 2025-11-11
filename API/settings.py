@@ -519,6 +519,7 @@ CORS_ALLOW_HEADERS = [
 
 CSRF_TRUSTED_ORIGINS = [
     "https://console.electrocomsolutions.in",
+    "https://consoleapi.electrocomsolutions.in",  # Production API endpoint
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:5001",
