@@ -6,10 +6,14 @@ from django.db.models import Q, Sum, Count
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.http import FileResponse
+from django.views.decorators.clickjacking import xframe_options_exempt
+from django.utils.decorators import method_decorator
+from urllib.parse import quote
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+import os
 
 from .models import Task, TaskResource, TaskAttachment
 from .serializers import (
@@ -853,6 +857,100 @@ class TaskViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Error downloading document: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='task_preview_document',
+        operation_summary="Preview Task Document",
+        operation_description="""
+        Preview a document attached to a task in the browser (inline display).
+        
+        **What it does:**
+        - Validates that the document belongs to the specified task
+        - Retrieves the file associated with that document
+        - Returns the file with inline content disposition for browser preview
+        
+        **Use Case:**
+        Use this endpoint to display PDFs/images in an iframe or embed tag for preview purposes.
+        The file is served with proper headers for inline display and iframe embedding.
+        
+        **Path Parameters:**
+        - task_id: ID of the task
+        - document_id: ID of the document to preview
+        """,
+        tags=['Task Management'],
+        responses={
+            200: openapi.Response(
+                description="File preview (inline)",
+                schema=openapi.Schema(type=openapi.TYPE_FILE)
+            ),
+            404: openapi.Response(description="Document not found")
+        }
+    )
+    @method_decorator(xframe_options_exempt)
+    @action(detail=True, methods=['get'], url_path='preview-document/(?P<document_id>[0-9]+)')
+    def preview_document(self, request, pk=None, document_id=None):
+        """Preview a document from a task (inline display for iframe)"""
+        try:
+            task = self.get_object()
+            document = TaskAttachment.objects.get(
+                id=document_id,
+                task_id=pk
+            )
+            
+            if not document.file:
+                return Response(
+                    {'error': 'File not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Determine content type based on file extension
+            file_name = document.file.name.lower()
+            if file_name.endswith('.pdf'):
+                content_type = 'application/pdf'
+            elif file_name.endswith(('.jpg', '.jpeg')):
+                content_type = 'image/jpeg'
+            elif file_name.endswith('.png'):
+                content_type = 'image/png'
+            elif file_name.endswith('.gif'):
+                content_type = 'image/gif'
+            elif file_name.endswith('.webp'):
+                content_type = 'image/webp'
+            elif file_name.endswith(('.doc', '.docx')):
+                content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            else:
+                content_type = 'application/octet-stream'
+            
+            # Get filename
+            filename = document.file.name.split('/')[-1]
+            
+            # Create file response with inline disposition for preview
+            response = FileResponse(
+                document.file.open('rb'),
+                content_type=content_type
+            )
+            # Use inline instead of attachment for preview
+            response['Content-Disposition'] = f'inline; filename="{quote(filename)}"'
+            # Remove X-Frame-Options header to allow iframe embedding
+            try:
+                del response['X-Frame-Options']
+            except KeyError:
+                pass  # Header doesn't exist, which is fine
+            # Add CORS headers if needed
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Allow-Methods'] = 'GET'
+            response['Access-Control-Allow-Headers'] = 'Content-Type'
+            return response
+            
+        except TaskAttachment.DoesNotExist:
+            return Response(
+                {'error': 'Document not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error previewing document: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     

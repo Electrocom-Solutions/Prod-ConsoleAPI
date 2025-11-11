@@ -5,6 +5,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Sum, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.db import transaction
@@ -35,12 +36,20 @@ from rest_framework.permissions import IsAuthenticated
 logger = logging.getLogger(__name__)
 
 
+class PaymentTrackerPagination(PageNumberPagination):
+    """Custom pagination for Payment Tracker to support page_size query parameter"""
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class PaymentTrackerViewSet(viewsets.ModelViewSet):
     """
     Payment Tracking APIs
     """
     queryset = PaymentTracker.objects.select_related('created_by', 'updated_by').all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = PaymentTrackerPagination
     
     def get_serializer_class(self):
         if self.action in ['list']:
