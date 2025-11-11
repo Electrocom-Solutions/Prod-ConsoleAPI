@@ -3,6 +3,9 @@
 .env.local
 .env.production
 
+firebase-admin-sdk-key.json
+
+
 # Python
 __pycache__/
 *.py[cod]
