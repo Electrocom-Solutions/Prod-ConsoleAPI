@@ -665,6 +665,21 @@ class TaskViewSet(viewsets.ModelViewSet):
         instance.refresh_from_db()
         new_status = instance.status
         
+        # When employee marks task as completed, ensure approval_status remains Pending
+        if not request.user.is_superuser and old_status != Task.Status.COMPLETED and new_status == Task.Status.COMPLETED:
+            # Ensure approval_status remains Pending (employees cannot approve their own tasks)
+            if instance.approval_status != Task.ApprovalStatus.PENDING:
+                instance.approval_status = Task.ApprovalStatus.PENDING
+                instance.save(update_fields=['approval_status'])
+            
+            employee_name = request.user.get_full_name() or request.user.username
+            send_notification_to_owners(
+                title="Task Completed",
+                message=f"Employee {employee_name} has marked task '{instance.task_name}' as completed. Please review and approve.",
+                notification_type="Task",
+                created_by=request.user
+            )
+        
         # Create activity log
         ActivityLog.objects.create(
             entity_type=ActivityLog.EntityType.TASK,
@@ -673,16 +688,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             description=f"Task {instance.task_name} updated",
             created_by=request.user
         )
-        
-        # Notify owner when employee marks task as completed
-        if not request.user.is_superuser and old_status != Task.Status.COMPLETED and new_status == Task.Status.COMPLETED:
-            employee_name = request.user.get_full_name() or request.user.username
-            send_notification_to_owners(
-                title="Task Completed",
-                message=f"Employee {employee_name} has marked task '{instance.task_name}' as completed",
-                notification_type="Task",
-                created_by=request.user
-            )
         
         return Response(serializer.data)
     
