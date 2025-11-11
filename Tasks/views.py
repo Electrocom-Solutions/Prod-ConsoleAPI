@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, Sum, Count
 from django.db.models.functions import Coalesce
 from django.db import transaction
@@ -40,7 +40,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         'employee', 'employee__profile', 'employee__profile__user',
         'project', 'project__client', 'created_by', 'updated_by'
     ).prefetch_related('attachments', 'resources').all()
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get_serializer_class(self):
         if self.action in ['list']:
