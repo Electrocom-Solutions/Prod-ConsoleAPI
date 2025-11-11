@@ -20,10 +20,33 @@ class NotificationAdmin(admin.ModelAdmin):
     )
 
     def save_model(self, request, obj, form, change):
+        from django.utils import timezone
+        from .utils import send_fcm_push_notification
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
         if not change:
             obj.created_by = request.user
+            # Set sent_at if not already set (for immediate notifications)
+            if not obj.sent_at and (not obj.scheduled_at or obj.scheduled_at <= timezone.now()):
+                obj.sent_at = timezone.now()
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
+        
+        # Send FCM push notification if notification is sent and channel supports it
+        if obj.sent_at and (obj.channel == Notification.Channel.IN_APP or obj.channel == Notification.Channel.PUSH):
+            try:
+                send_fcm_push_notification(
+                    user=obj.recipient,
+                    title=obj.title,
+                    message=obj.message,
+                    notification_type=obj.type,
+                    notification_id=obj.id
+                )
+                logger.info(f"FCM push notification sent for notification {obj.id} to user {obj.recipient.username}")
+            except Exception as e:
+                logger.error(f"Failed to send FCM push notification for notification {obj.id}: {str(e)}")
 
 
 @admin.register(EmailTemplate)

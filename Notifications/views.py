@@ -1,6 +1,7 @@
 """
 Views for Notifications app.
 """
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,6 +10,8 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+logger = logging.getLogger(__name__)
 
 from .models import Notification, EmailTemplate
 from .serializers import (
@@ -295,6 +298,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
         
         token = request.data.get('token')
         if not token:
+            logger.warning(f"Token registration failed: No token provided for user {request.user.username}")
             return Response(
                 {'error': 'Token is required'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -302,6 +306,8 @@ class NotificationViewSet(viewsets.ModelViewSet):
         
         device_type = request.data.get('device_type', '').lower()
         device_id = request.data.get('device_id')
+        
+        logger.info(f"Registering FCM token for user {request.user.username} (device_type: {device_type}, device_id: {device_id})")
         
         # Get or create device token
         device_token, created = DeviceToken.objects.update_or_create(
@@ -313,6 +319,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 'is_active': True,
             }
         )
+        
+        action = 'created' if created else 'updated'
+        logger.info(f"FCM token {action} successfully for user {request.user.username} (token_id: {device_token.id})")
         
         return Response({
             'success': True,
