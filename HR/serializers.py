@@ -301,29 +301,40 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             )
             
             # Create mobile number if provided
-            if phone_number and phone_number.strip():
-                # Check if mobile number already exists for another user
-                existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number.strip()).first()
-                if existing_mobile:
-                    # If exists for different user, raise error
-                    if existing_mobile.user != user:
+            if phone_number:
+                phone_number_cleaned = str(phone_number).strip()
+                if phone_number_cleaned:
+                    try:
+                        # Check if mobile number already exists for another user
+                        existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number_cleaned).first()
+                        if existing_mobile:
+                            # If exists for different user, raise error
+                            if existing_mobile.user != user:
+                                raise serializers.ValidationError({
+                                    'phone_number': 'This mobile number is already associated with another user.'
+                                })
+                            # If exists for same user, update it to be primary
+                            existing_mobile.is_primary = True
+                            existing_mobile.updated_by = request_user if request_user.is_authenticated else None
+                            existing_mobile.save()
+                        else:
+                            # Mark any existing mobile numbers for this user as non-primary
+                            MobileNumber.objects.filter(user=user).update(is_primary=False)
+                            # Create new mobile number as primary
+                            MobileNumber.objects.create(
+                                user=user,
+                                mobile_number=phone_number_cleaned,
+                                is_primary=True,
+                                created_by=request_user if request_user.is_authenticated else None
+                            )
+                    except Exception as e:
+                        # Log the error and re-raise with a more user-friendly message
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Error creating mobile number for employee: {str(e)}")
                         raise serializers.ValidationError({
-                            'phone_number': 'This mobile number is already associated with another user.'
+                            'phone_number': f'Failed to save mobile number: {str(e)}'
                         })
-                    # If exists for same user, update it to be primary
-                    existing_mobile.is_primary = True
-                    existing_mobile.updated_by = request_user if request_user.is_authenticated else None
-                    existing_mobile.save()
-                else:
-                    # Mark any existing mobile numbers for this user as non-primary
-                    MobileNumber.objects.filter(user=user).update(is_primary=False)
-                    # Create new mobile number as primary
-                    MobileNumber.objects.create(
-                        user=user,
-                        mobile_number=phone_number.strip(),
-                        is_primary=True,
-                        created_by=request_user if request_user.is_authenticated else None
-                    )
             
             return employee
     
@@ -393,29 +404,39 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                     user = instance.profile.user
                     request_user = self.context['request'].user
                     
-                    if phone_number and phone_number.strip():
-                        # Check if mobile number already exists for another user
-                        existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number.strip()).first()
-                        if existing_mobile:
-                            # If exists for different user, raise error
-                            if existing_mobile.user != user:
-                                raise serializers.ValidationError({
-                                    'phone_number': 'This mobile number is already associated with another user.'
-                                })
-                            # If exists for same user, update it to be primary
-                            existing_mobile.is_primary = True
-                            existing_mobile.updated_by = request_user if request_user.is_authenticated else None
-                            existing_mobile.save()
-                        else:
-                            # Mark any existing mobile numbers for this user as non-primary
-                            MobileNumber.objects.filter(user=user).update(is_primary=False)
-                            # Create new mobile number as primary
-                            MobileNumber.objects.create(
-                                user=user,
-                                mobile_number=phone_number.strip(),
-                                is_primary=True,
-                                created_by=request_user if request_user.is_authenticated else None
-                            )
+                    phone_number_cleaned = str(phone_number).strip() if phone_number else ""
+                    if phone_number_cleaned:
+                        try:
+                            # Check if mobile number already exists for another user
+                            existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number_cleaned).first()
+                            if existing_mobile:
+                                # If exists for different user, raise error
+                                if existing_mobile.user != user:
+                                    raise serializers.ValidationError({
+                                        'phone_number': 'This mobile number is already associated with another user.'
+                                    })
+                                # If exists for same user, update it to be primary
+                                existing_mobile.is_primary = True
+                                existing_mobile.updated_by = request_user if request_user.is_authenticated else None
+                                existing_mobile.save()
+                            else:
+                                # Mark any existing mobile numbers for this user as non-primary
+                                MobileNumber.objects.filter(user=user).update(is_primary=False)
+                                # Create new mobile number as primary
+                                MobileNumber.objects.create(
+                                    user=user,
+                                    mobile_number=phone_number_cleaned,
+                                    is_primary=True,
+                                    created_by=request_user if request_user.is_authenticated else None
+                                )
+                        except Exception as e:
+                            # Log the error and re-raise with a more user-friendly message
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.error(f"Error updating mobile number for employee: {str(e)}")
+                            raise serializers.ValidationError({
+                                'phone_number': f'Failed to save mobile number: {str(e)}'
+                            })
                     else:
                         # If phone_number is empty, remove primary status from all mobile numbers
                         MobileNumber.objects.filter(user=user).update(is_primary=False)

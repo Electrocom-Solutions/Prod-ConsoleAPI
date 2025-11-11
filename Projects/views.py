@@ -35,8 +35,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) |
-                Q(client__first_name__icontains=search) |
-                Q(client__last_name__icontains=search)
+                Q(client__profile__user__first_name__icontains=search) |
+                Q(client__profile__user__last_name__icontains=search) |
+                Q(client__profile__user__username__icontains=search)
             )
         
         # Filter by status

@@ -256,6 +256,71 @@ class NotificationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     @swagger_auto_schema(
+        operation_id='register_fcm_token',
+        operation_summary="Register FCM Device Token",
+        operation_description="""
+        Register or update FCM device token for push notifications.
+        
+        **Required Fields:**
+        - token: FCM device token
+        
+        **Optional Fields:**
+        - device_type: Device type (android, ios)
+        - device_id: Unique device identifier
+        
+        **Behavior:**
+        - If token already exists for the user, it will be updated
+        - If token exists for another user, it will be transferred to current user
+        - Token will be marked as active
+        """,
+        tags=['Notifications'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['token'],
+            properties={
+                'token': openapi.Schema(type=openapi.TYPE_STRING, description='FCM device token'),
+                'device_type': openapi.Schema(type=openapi.TYPE_STRING, description='Device type (android, ios)', enum=['android', 'ios']),
+                'device_id': openapi.Schema(type=openapi.TYPE_STRING, description='Unique device identifier'),
+            }
+        ),
+        responses={
+            200: openapi.Response(description="Token registered successfully"),
+            400: openapi.Response(description="Invalid request data")
+        }
+    )
+    @action(detail=False, methods=['post'], url_path='register-token')
+    def register_token(self, request):
+        """Register or update FCM device token"""
+        from .models import DeviceToken
+        
+        token = request.data.get('token')
+        if not token:
+            return Response(
+                {'error': 'Token is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        device_type = request.data.get('device_type', '').lower()
+        device_id = request.data.get('device_id')
+        
+        # Get or create device token
+        device_token, created = DeviceToken.objects.update_or_create(
+            token=token,
+            defaults={
+                'user': request.user,
+                'device_type': device_type if device_type in ['android', 'ios'] else None,
+                'device_id': device_id,
+                'is_active': True,
+            }
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Token registered successfully' if created else 'Token updated successfully',
+            'token_id': device_token.id,
+        }, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
         operation_id='notification_retrieve',
         operation_summary="Get Notification Details",
         operation_description="""
