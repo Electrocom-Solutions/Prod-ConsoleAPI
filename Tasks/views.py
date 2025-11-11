@@ -196,9 +196,6 @@ class TaskViewSet(viewsets.ModelViewSet):
                 task_date__lte=end_date
             )
         
-        # Get task IDs for resource cost calculation
-        task_ids = list(tasks_queryset.values_list('id', flat=True))
-        
         # Calculate statistics
         # Total tasks
         total_tasks = tasks_queryset.count()
@@ -212,29 +209,72 @@ class TaskViewSet(viewsets.ModelViewSet):
         ).count()
         
         # Total timings (convert minutes to hours)
-        total_minutes = tasks_queryset.aggregate(
-            total=Coalesce(Sum('time_taken_minutes'), 0)
-        )['total'] or 0
-        total_timings = float(total_minutes) / 60.0  # Convert minutes to hours
+        try:
+            total_minutes_result = tasks_queryset.aggregate(
+                total=Coalesce(Sum('time_taken_minutes'), 0)
+            )
+            total_minutes = total_minutes_result.get('total', 0) or 0
+            # Convert to int/float safely
+            if isinstance(total_minutes, (int, float)):
+                total_minutes = int(total_minutes)
+            else:
+                total_minutes = 0
+            total_timings = float(total_minutes) / 60.0  # Convert minutes to hours
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error calculating total timings: {str(e)}")
+            total_timings = 0.0
         
         # Total resource cost (sum of all TaskResource.total_cost for these tasks)
-        if task_ids:
-            total_resource_cost = TaskResource.objects.filter(
-                task_id__in=task_ids
-            ).aggregate(
-                total=Coalesce(Sum('total_cost'), 0)
-            )['total'] or 0
-        else:
+        try:
+            # Get task IDs for resource cost calculation
+            task_ids = list(tasks_queryset.values_list('id', flat=True))
+            
+            if task_ids:
+                total_resource_cost_result = TaskResource.objects.filter(
+                    task__in=task_ids
+                ).aggregate(
+                    total=Coalesce(Sum('total_cost'), 0)
+                )
+                total_resource_cost = total_resource_cost_result.get('total', 0) or 0
+            else:
+                total_resource_cost = 0
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error calculating total resource cost: {str(e)}")
             total_resource_cost = 0
         
         try:
             from decimal import Decimal
+            
+            # Ensure values are properly converted to Decimal
+            # Handle Decimal types that might already be Decimal
+            if isinstance(total_resource_cost, Decimal):
+                total_resource_cost_decimal = total_resource_cost
+            elif total_resource_cost is None:
+                total_resource_cost_decimal = Decimal('0.00')
+            else:
+                try:
+                    # Try to convert to float first, then to Decimal
+                    total_resource_cost_float = float(total_resource_cost)
+                    total_resource_cost_decimal = Decimal(str(total_resource_cost_float))
+                except (ValueError, TypeError):
+                    total_resource_cost_decimal = Decimal('0.00')
+            
+            # Convert total_timings to Decimal
+            try:
+                total_timings_decimal = Decimal(str(round(total_timings, 2)))
+            except (ValueError, TypeError):
+                total_timings_decimal = Decimal('0.00')
+            
             data = {
-                'total_tasks': total_tasks,
-                'pending_approval': pending_approval,
-                'approved_tasks': approved_tasks,
-                'total_timings': Decimal(str(round(total_timings, 2))),
-                'total_resource_cost': Decimal(str(total_resource_cost))
+                'total_tasks': int(total_tasks),
+                'pending_approval': int(pending_approval),
+                'approved_tasks': int(approved_tasks),
+                'total_timings': total_timings_decimal,
+                'total_resource_cost': total_resource_cost_decimal
             }
             
             serializer = TaskStatisticsSerializer(data=data)
@@ -252,8 +292,10 @@ class TaskViewSet(viewsets.ModelViewSet):
             import logging
             import traceback
             logger = logging.getLogger(__name__)
-            logger.error(f"Error in task statistics: {str(e)}")
-            logger.error(traceback.format_exc())
+            error_msg = f"Error in task statistics: {str(e)}"
+            error_traceback = traceback.format_exc()
+            logger.error(error_msg)
+            logger.error(error_traceback)
             
             from django.conf import settings
             error_response = {
@@ -261,7 +303,14 @@ class TaskViewSet(viewsets.ModelViewSet):
                 'message': str(e)
             }
             if settings.DEBUG:
-                error_response['traceback'] = traceback.format_exc()
+                error_response['traceback'] = error_traceback
+                error_response['details'] = {
+                    'total_tasks': total_tasks,
+                    'total_minutes': total_minutes,
+                    'total_timings': total_timings,
+                    'total_resource_cost': str(total_resource_cost),
+                    'task_ids_count': len(task_ids) if task_ids else 0
+                }
             
             return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
@@ -469,6 +518,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                     try:
                         # Update task status to In Progress (approved)
                         task.status = Task.Status.IN_PROGRESS
+                        task.approval_status = Task.ApprovalStatus.APPROVED
                         task.updated_by = request.user
                         task.save()
                         
@@ -1144,6 +1194,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             
             # Update task status to In Progress (approved)
             task.status = Task.Status.IN_PROGRESS
+            task.approval_status = Task.ApprovalStatus.APPROVED
             task.updated_by = request.user
             task.save()
             
@@ -1233,6 +1284,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             
             # Update task status to Canceled (rejected)
             task.status = Task.Status.CANCELED
+            task.approval_status = Task.ApprovalStatus.REJECTED
             task.updated_by = request.user
             task.save()
             
@@ -1363,16 +1415,29 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
         year_filter = self.request.query_params.get('year', None)
         
         if month_filter and year_filter:
-            # Filter by specific month and year
-            month = int(month_filter)
-            year = int(year_filter)
-            # Get first and last day of the month
-            first_day = date(year, month, 1)
-            last_day = date(year, month, monthrange(year, month)[1])
-            queryset = queryset.filter(
-                task_date__gte=first_day,
-                task_date__lte=last_day
-            )
+            try:
+                # Filter by specific month and year
+                month = int(month_filter)
+                year = int(year_filter)
+                
+                # Validate month and year
+                if month < 1 or month > 12:
+                    return queryset.none()
+                if year < 1900 or year > 2100:
+                    return queryset.none()
+                
+                # Get first and last day of the month
+                first_day = date(year, month, 1)
+                last_day = date(year, month, monthrange(year, month)[1])
+                queryset = queryset.filter(
+                    task_date__gte=first_day,
+                    task_date__lte=last_day
+                )
+            except (ValueError, TypeError) as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Invalid month/year filter: {month_filter}/{year_filter}, error: {str(e)}")
+                return queryset.none()
         
         # Search by employee, client, project, task name
         search = self.request.query_params.get('search', None)
@@ -1476,7 +1541,7 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
         # Total resources count and total cost
         if task_ids:
             resource_stats = TaskResource.objects.filter(
-                task_id__in=task_ids
+                task__in=task_ids
             ).aggregate(
                 total_count=Count('id'),
                 total_cost=Coalesce(Sum('total_cost'), 0)

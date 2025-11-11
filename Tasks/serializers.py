@@ -246,17 +246,39 @@ class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
     
     def get_grand_total(self, obj):
         """Get grand total of all resources in this task"""
-        from django.db.models import Sum
-        from django.db.models.functions import Coalesce
-        total = obj.resources.aggregate(
-            total=Coalesce(Sum('total_cost'), 0)
-        )['total'] or 0
-        return float(total)
+        try:
+            from django.db.models import Sum
+            from django.db.models.functions import Coalesce
+            from decimal import Decimal
+            
+            total_result = obj.resources.aggregate(
+                total=Coalesce(Sum('total_cost'), 0)
+            )
+            total = total_result.get('total', 0) or 0
+            
+            # Handle Decimal type conversion
+            if isinstance(total, Decimal):
+                return float(total)
+            elif isinstance(total, (int, float)):
+                return float(total)
+            else:
+                return 0.0
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error calculating grand total for task {obj.id}: {str(e)}")
+            return 0.0
     
     def get_resource_breakdown(self, obj):
         """Get resource breakdown for this task"""
-        resources = obj.resources.all()
-        return TaskResourceBreakdownSerializer(resources, many=True).data
+        try:
+            resources = obj.resources.all()
+            return TaskResourceBreakdownSerializer(resources, many=True).data
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting resource breakdown for task {obj.id}: {str(e)}")
+            return []
 
 
 class TaskResourcesStatisticsSerializer(serializers.Serializer):

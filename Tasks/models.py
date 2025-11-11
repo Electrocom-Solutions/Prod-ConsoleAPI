@@ -9,6 +9,11 @@ class Task(models.Model):
         COMPLETED = "Completed", "Completed"
         CANCELED = "Canceled", "Canceled"
 
+    class ApprovalStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
     employee = models.ForeignKey("HR.Employee", on_delete=models.SET_NULL, related_name="tasks", blank=True, null=True)
     project = models.ForeignKey("Projects.Project", on_delete=models.CASCADE, related_name="tasks")
     task_name = models.CharField(max_length=255)
@@ -18,6 +23,12 @@ class Task(models.Model):
     time_taken_minutes = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     internal_notes = models.TextField(blank=True, null=True)
+    approval_status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING,
+        help_text="Task approval status: pending, approved, or rejected"
+    )
 
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="tasks_created", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
