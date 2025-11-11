@@ -25,15 +25,32 @@ def send_fcm_push_notification(user, title, message, notification_type, notifica
     """
     try:
         import firebase_admin
-        from firebase_admin import messaging
+        from firebase_admin import messaging, credentials
+        import os
         
         # Initialize Firebase Admin if not already initialized
         try:
             firebase_admin.get_app()
         except ValueError:
-            # Firebase not initialized, skip push notification
-            logger.warning("Firebase Admin not initialized. Skipping push notification.")
-            return 0
+            # Firebase not initialized, try to initialize it
+            try:
+                # Try to get credentials from environment variable
+                cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', None)
+                if cred_path and os.path.exists(cred_path):
+                    cred = credentials.Certificate(cred_path)
+                    firebase_admin.initialize_app(cred)
+                    logger.info("Firebase Admin initialized from GOOGLE_APPLICATION_CREDENTIALS")
+                else:
+                    # Try to use default credentials (for GCP environments)
+                    try:
+                        firebase_admin.initialize_app()
+                        logger.info("Firebase Admin initialized with default credentials")
+                    except Exception as e:
+                        logger.warning(f"Firebase Admin initialization failed: {str(e)}. Push notifications will be skipped.")
+                        return 0
+            except Exception as e:
+                logger.warning(f"Firebase Admin not initialized. Skipping push notification: {str(e)}")
+                return 0
         
         # Get active device tokens for the user
         device_tokens = DeviceToken.objects.filter(

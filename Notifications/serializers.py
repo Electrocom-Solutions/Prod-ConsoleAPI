@@ -94,6 +94,7 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
         from django.utils import timezone
         from HR.models import Employee
         from Scheduler.tasks import send_scheduled_notification
+        from .utils import send_fcm_push_notification
         import logging
         
         logger = logging.getLogger(__name__)
@@ -129,13 +130,23 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
                         created_by=request_user if request_user.is_authenticated else None
                     )
                     notifications_created.append(notification)
+                    
+                    # Send FCM push notification if channel includes Push or In-App
+                    if channel == Notification.Channel.PUSH or channel == Notification.Channel.IN_APP:
+                        send_fcm_push_notification(
+                            user=user,
+                            title=title,
+                            message=message,
+                            notification_type=notification_type,
+                            notification_id=notification.id
+                        )
             
             # Return the first notification (for API response)
             if notifications_created:
                 return notifications_created[0]
             else:
                 # If no employees found, create a notification for the creator
-                return Notification.objects.create(
+                notification = Notification.objects.create(
                     recipient=request_user if request_user.is_authenticated else None,
                     title=title,
                     message=message,
@@ -145,6 +156,18 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
                     sent_at=current_time,
                     created_by=request_user if request_user.is_authenticated else None
                 )
+                
+                # Send FCM push notification if channel includes Push or In-App
+                if channel == Notification.Channel.PUSH or channel == Notification.Channel.IN_APP:
+                    send_fcm_push_notification(
+                        user=request_user,
+                        title=title,
+                        message=message,
+                        notification_type=notification_type,
+                        notification_id=notification.id
+                    )
+                
+                return notification
         else:
             # Schedule for later - create a Celery task scheduled for the specific time
             logger.info(f"Scheduling notification for {scheduled_at} (type: {type(scheduled_at)})")
