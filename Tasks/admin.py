@@ -4,14 +4,14 @@ from .models import Task, TaskAttachment, TaskResource
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ('task_name', 'employee', 'project', 'task_date', 'status', 'time_taken_minutes', 'created_at')
-    list_filter = ('status', 'task_date', 'project', 'created_at', 'updated_at')
+    list_display = ('task_name', 'employee', 'project', 'task_date', 'status', 'approval_status', 'time_taken_minutes', 'created_at')
+    list_filter = ('status', 'approval_status', 'task_date', 'project', 'created_at', 'updated_at')
     search_fields = ('task_name', 'task_description', 'location', 'internal_notes', 'employee__employee_code', 'project__name')
     date_hierarchy = 'task_date'
     readonly_fields = ('created_at', 'updated_at', 'created_by', 'updated_by')
     fieldsets = (
         ('Task Information', {
-            'fields': ('employee', 'project', 'task_name', 'task_description', 'task_date', 'status')
+            'fields': ('employee', 'project', 'task_name', 'task_description', 'task_date', 'status', 'approval_status')
         }),
         ('Location & Time', {
             'fields': ('location', 'time_taken_minutes')
