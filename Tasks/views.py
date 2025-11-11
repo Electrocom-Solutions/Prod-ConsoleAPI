@@ -200,31 +200,14 @@ class TaskViewSet(viewsets.ModelViewSet):
         # Total tasks
         total_tasks = tasks_queryset.count()
         
-        # Pending approval (Draft status)
-        pending_approval = tasks_queryset.filter(status=Task.Status.DRAFT).count()
+        # Pending approval (approval_status = pending)
+        pending_approval = tasks_queryset.filter(approval_status=Task.ApprovalStatus.PENDING).count()
         
-        # Approved tasks (In Progress or Completed)
-        approved_tasks = tasks_queryset.filter(
-            status__in=[Task.Status.IN_PROGRESS, Task.Status.COMPLETED]
-        ).count()
+        # In Progress (status = In Progress)
+        in_progress = tasks_queryset.filter(status=Task.Status.IN_PROGRESS).count()
         
-        # Total timings (convert minutes to hours)
-        try:
-            total_minutes_result = tasks_queryset.aggregate(
-                total=Coalesce(Sum('time_taken_minutes'), 0)
-            )
-            total_minutes = total_minutes_result.get('total', 0) or 0
-            # Convert to int/float safely
-            if isinstance(total_minutes, (int, float)):
-                total_minutes = int(total_minutes)
-            else:
-                total_minutes = 0
-            total_timings = float(total_minutes) / 60.0  # Convert minutes to hours
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Error calculating total timings: {str(e)}")
-            total_timings = 0.0
+        # Approved tasks (approval_status = approved)
+        approved_tasks = tasks_queryset.filter(approval_status=Task.ApprovalStatus.APPROVED).count()
         
         # Total resource cost (sum of all TaskResource.total_cost for these tasks)
         try:
@@ -263,17 +246,11 @@ class TaskViewSet(viewsets.ModelViewSet):
                 except (ValueError, TypeError):
                     total_resource_cost_decimal = Decimal('0.00')
             
-            # Convert total_timings to Decimal
-            try:
-                total_timings_decimal = Decimal(str(round(total_timings, 2)))
-            except (ValueError, TypeError):
-                total_timings_decimal = Decimal('0.00')
-            
             data = {
                 'total_tasks': int(total_tasks),
+                'in_progress': int(in_progress),
                 'pending_approval': int(pending_approval),
                 'approved_tasks': int(approved_tasks),
-                'total_timings': total_timings_decimal,
                 'total_resource_cost': total_resource_cost_decimal
             }
             

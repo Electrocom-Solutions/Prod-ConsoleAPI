@@ -128,9 +128,9 @@ class TaskDetailSerializer(serializers.ModelSerializer):
 
 class TaskStatisticsSerializer(serializers.Serializer):
     total_tasks = serializers.IntegerField()
+    in_progress = serializers.IntegerField()
     pending_approval = serializers.IntegerField()
     approved_tasks = serializers.IntegerField()
-    total_timings = serializers.DecimalField(max_digits=10, decimal_places=2, help_text="Total time in hours")
     total_resource_cost = serializers.DecimalField(max_digits=15, decimal_places=2, help_text="Total resource cost")
 
 
