@@ -44,47 +44,62 @@ else:
 # 2. Check device tokens
 print("\n2. DEVICE TOKENS STATUS:")
 print("-" * 60)
-all_tokens = DeviceToken.objects.all()
-active_tokens = DeviceToken.objects.filter(is_active=True)
+try:
+    all_tokens = DeviceToken.objects.all()
+    active_tokens = DeviceToken.objects.filter(is_active=True)
 
-print(f"Total tokens: {all_tokens.count()}")
-print(f"Active tokens: {active_tokens.count()}")
+    print(f"Total tokens: {all_tokens.count()}")
+    print(f"Active tokens: {active_tokens.count()}")
 
-if active_tokens.exists():
-    print("\nActive tokens by user:")
-    for token in active_tokens.select_related('user'):
-        print(f"  User: {token.user.username}")
-        print(f"    Device: {token.device_type}")
-        print(f"    Token: {token.token[:50]}...")
-        print(f"    Created: {token.created_at}")
-        print()
-else:
-    print("  ⚠️  No active device tokens found!")
-    print("  Users need to login from mobile app to register tokens")
+    if active_tokens.exists():
+        print("\nActive tokens by user:")
+        for token in active_tokens.select_related('user'):
+            print(f"  User: {token.user.username}")
+            print(f"    Device: {token.device_type}")
+            print(f"    Token: {token.token[:50]}...")
+            print(f"    Created: {token.created_at}")
+            print()
+    else:
+        print("  ⚠️  No active device tokens found!")
+        print("  Users need to login from mobile app to register tokens")
+except Exception as e:
+    if "does not exist" in str(e) or "relation" in str(e).lower():
+        print("  ❌ DeviceToken table does not exist!")
+        print("  Run migrations: python manage.py makemigrations Notifications")
+        print("  Then: python manage.py migrate Notifications")
+    else:
+        print(f"  ❌ Error checking device tokens: {e}")
 
 # 3. Check notifications without tokens
 print("\n3. NOTIFICATIONS WITHOUT ACTIVE TOKENS:")
 print("-" * 60)
-recent_notifs = Notification.objects.filter(
-    sent_at__isnull=False,
-    created_at__gte=timezone.now() - timedelta(hours=1)
-).select_related('recipient')
+try:
+    recent_notifs = Notification.objects.filter(
+        sent_at__isnull=False,
+        created_at__gte=timezone.now() - timedelta(hours=1)
+    ).select_related('recipient')
 
-notifications_without_tokens = []
-for notif in recent_notifs:
-    has_token = DeviceToken.objects.filter(
-        user=notif.recipient,
-        is_active=True
-    ).exists()
-    if not has_token:
-        notifications_without_tokens.append(notif)
+    notifications_without_tokens = []
+    for notif in recent_notifs:
+        try:
+            has_token = DeviceToken.objects.filter(
+                user=notif.recipient,
+                is_active=True
+            ).exists()
+            if not has_token:
+                notifications_without_tokens.append(notif)
+        except Exception:
+            # Table doesn't exist, assume no tokens
+            notifications_without_tokens.append(notif)
 
-if notifications_without_tokens:
-    print(f"Found {len(notifications_without_tokens)} recent notifications for users without active tokens:")
-    for notif in notifications_without_tokens:
-        print(f"  Notification {notif.id} → {notif.recipient.username} (no active token)")
-else:
-    print("  ✅ All recent notifications have active tokens")
+    if notifications_without_tokens:
+        print(f"Found {len(notifications_without_tokens)} recent notifications for users without active tokens:")
+        for notif in notifications_without_tokens:
+            print(f"  Notification {notif.id} → {notif.recipient.username} (no active token)")
+    else:
+        print("  ✅ All recent notifications have active tokens")
+except Exception as e:
+    print(f"  ⚠️  Could not check: {e}")
 
 # 4. Firebase Admin SDK check
 print("\n4. FIREBASE ADMIN SDK STATUS:")
