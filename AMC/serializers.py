@@ -150,3 +150,16 @@ class AMCStatisticsSerializer(serializers.Serializer):
     expiring_soon = serializers.IntegerField()
     pending_bills = serializers.IntegerField()
 
+
+class AMCBillingUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating AMC billing payment status"""
+    
+    class Meta:
+        model = AMCBilling
+        fields = ['paid', 'payment_date', 'payment_mode', 'notes']
+    
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+        validated_data['updated_by'] = user if user.is_authenticated else None
+        return super().update(instance, validated_data)
+

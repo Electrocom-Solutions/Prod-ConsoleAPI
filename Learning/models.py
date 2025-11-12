@@ -12,10 +12,13 @@ def extract_youtube_video_id(url):
     - https://youtu.be/VIDEO_ID
     - https://www.youtube.com/embed/VIDEO_ID
     - https://www.youtube.com/v/VIDEO_ID
+    - https://youtube.com/shorts/VIDEO_ID
+    - https://www.youtube.com/shorts/VIDEO_ID
     """
     patterns = [
         r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})',
         r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})',
+        r'(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})',  # YouTube Shorts (with or without www)
     ]
     
     for pattern in patterns:

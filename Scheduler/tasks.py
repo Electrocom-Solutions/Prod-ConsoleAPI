@@ -777,6 +777,70 @@ def send_tender_emd_reminders(self):
         raise
 
 
+@shared_task(bind=True, name='Scheduler.tasks.auto_close_awarded_tenders')
+def auto_close_awarded_tenders(self):
+    """
+    Automatically close tenders with status 'Awarded' after their end_date has passed.
+    
+    This task runs daily and checks for tenders that:
+    1. Have status 'Awarded'
+    2. Have an end_date that has passed (end_date < today)
+    
+    These tenders will be automatically marked as 'Closed'.
+    """
+    try:
+        from django.utils import timezone as tz
+        import pytz
+        
+        kolkata_tz = pytz.timezone('Asia/Kolkata')
+        now = tz.now().astimezone(kolkata_tz)
+        today = now.date()
+        
+        logger.info(f"Starting auto-close awarded tenders task for {today}")
+        
+        # Find tenders with status 'Awarded' and end_date < today
+        tenders_to_close = Tender.objects.filter(
+            status=Tender.Status.AWARDED,
+            end_date__lt=today
+        )
+        
+        if not tenders_to_close.exists():
+            logger.info("No awarded tenders found that need to be closed.")
+            return {
+                'status': 'skipped',
+                'reason': 'No tenders to close',
+                'date': str(today)
+            }
+        
+        closed_count = 0
+        errors = []
+        
+        for tender in tenders_to_close:
+            try:
+                tender.status = Tender.Status.CLOSED
+                tender.save()
+                closed_count += 1
+                logger.info(f"Auto-closed tender {tender.name} (ID: {tender.id}) - end_date was {tender.end_date}")
+            except Exception as e:
+                error_msg = f"Error closing tender {tender.name} (ID: {tender.id}): {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg, exc_info=True)
+        
+        result = {
+            'status': 'success',
+            'date': str(today),
+            'closed_count': closed_count,
+            'errors': errors if errors else None
+        }
+        
+        logger.info(f"Auto-close awarded tenders completed: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in auto_close_awarded_tenders task: {str(e)}", exc_info=True)
+        raise
+
+
 @shared_task(bind=True, name='Scheduler.tasks.send_scheduled_email')
 def send_scheduled_email(self, template_id, recipients, placeholder_values=None):
     """

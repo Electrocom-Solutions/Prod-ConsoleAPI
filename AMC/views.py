@@ -13,7 +13,8 @@ from .serializers import (
     AMCDetailSerializer,
     AMCCreateSerializer,
     AMCBillingDetailsSerializer,
-    AMCStatisticsSerializer
+    AMCStatisticsSerializer,
+    AMCBillingUpdateSerializer
 )
 
 
@@ -38,9 +39,9 @@ class AMCViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(
                 Q(amc_number__icontains=search) |
-                Q(client__first_name__icontains=search) |
-                Q(client__last_name__icontains=search) |
-                Q(client__name__icontains=search)
+                Q(client__profile__user__first_name__icontains=search) |
+                Q(client__profile__user__last_name__icontains=search) |
+                Q(client__profile__user__username__icontains=search)
             )
         
         # Filter by status
@@ -453,3 +454,53 @@ class AMCViewSet(viewsets.ModelViewSet):
         
         serializer = AMCStatisticsSerializer(data)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        operation_id='amc_billing_update',
+        operation_summary="Update AMC Billing Payment Status",
+        operation_description="""
+        Update the payment status of an AMC billing record.
+        
+        **Fields:**
+        - paid: Boolean indicating if the bill is paid
+        - payment_date: Date of payment (required if paid=True)
+        - payment_mode: Payment mode (Cash, Bank Transfer, Cheque, UPI) (required if paid=True)
+        - notes: Optional notes about the payment
+        
+        **Use Case:**
+        Use this endpoint to mark bills as paid or pending in the billing details modal.
+        """,
+        tags=['AMC Management'],
+        request_body=AMCBillingUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Billing record updated successfully",
+                schema=AMCBillingSerializer()
+            ),
+            404: openapi.Response(description="Billing record not found")
+        }
+    )
+    @action(detail=False, methods=['patch'], url_path='billing/(?P<billing_id>[^/.]+)/update')
+    def update_billing(self, request, billing_id=None):
+        """Update AMC billing payment status"""
+        try:
+            billing = AMCBilling.objects.get(id=billing_id)
+        except AMCBilling.DoesNotExist:
+            return Response(
+                {'error': 'Billing record not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = AMCBillingUpdateSerializer(
+            billing,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        # Return updated billing with full details
+        from .serializers import AMCBillingSerializer
+        billing_serializer = AMCBillingSerializer(billing)
+        return Response(billing_serializer.data, status=status.HTTP_200_OK)
