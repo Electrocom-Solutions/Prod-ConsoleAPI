@@ -38,7 +38,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     """
     queryset = Task.objects.select_related(
         'employee', 'employee__profile', 'employee__profile__user',
-        'project', 'project__client', 'created_by', 'updated_by'
+        'project', 'project__tender', 'created_by', 'updated_by'
     ).prefetch_related('attachments', 'resources').all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     
@@ -75,7 +75,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         
-        # Search by employee name, project name, or client name
+        # Search by employee name, project name, or tender name
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -83,9 +83,8 @@ class TaskViewSet(viewsets.ModelViewSet):
                 Q(employee__profile__user__last_name__icontains=search) |
                 Q(employee__profile__user__username__icontains=search) |
                 Q(project__name__icontains=search) |
-                Q(project__client__first_name__icontains=search) |
-                Q(project__client__last_name__icontains=search) |
-                Q(project__client__name__icontains=search)
+                Q(project__tender__name__icontains=search) |
+                Q(project__tender__reference_number__icontains=search)
             )
         
         # Filter by project
@@ -304,11 +303,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         **What it returns:**
         - List of tasks with basic information (task name, date, location, time taken, status)
-        - Employee name, project name, and client name for easy reference
+        - Employee name, project name, and tender name for easy reference
         - Time taken in both minutes and hours
         
         **Search Options:**
-        - search: Search by employee name (first name, last name, username), project name, or client name (case-insensitive partial match)
+        - search: Search by employee name (first name, last name, username), project name, or tender name/reference number (case-insensitive partial match)
         
         **Filtering Options:**
         - project: Filter by project ID
@@ -320,7 +319,7 @@ class TaskViewSet(viewsets.ModelViewSet):
           * all: All tasks (no date filter) - this is the default
         
         **Query Parameters:**
-        - search (optional): Search by employee name, project name, or client name
+        - search (optional): Search by employee name, project name, or tender name/reference number
         - project (optional): Filter by project ID
         - status (optional): Filter by task status
         - date_filter (optional): Filter by date range (today, this_week, this_month, all)
@@ -333,7 +332,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             openapi.Parameter(
                 'search',
                 openapi.IN_QUERY,
-                description='Search by employee name, project name, or client name',
+                description='Search by employee name, project name, or tender name/reference number',
                 type=openapi.TYPE_STRING,
                 required=False
             ),
@@ -392,7 +391,7 @@ class TaskViewSet(viewsets.ModelViewSet):
           * Time Taken (in minutes and hours)
           * Status, Internal Notes
         - Related information:
-          * Project name and client name
+          * Project name and tender name
           * Employee name (if assigned)
         - Task attachments: All files attached to the task
         - Task resources: All resources used in the task with costs
@@ -1384,7 +1383,7 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Task.objects.select_related(
         'employee', 'employee__profile', 'employee__profile__user',
-        'project', 'project__client', 'created_by', 'updated_by'
+        'project', 'project__tender', 'created_by', 'updated_by'
     ).prefetch_related('resources').filter(
         resources__isnull=False
     ).distinct()
@@ -1422,7 +1421,7 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.error(f"Invalid month/year filter: {month_filter}/{year_filter}, error: {str(e)}")
                 return queryset.none()
         
-        # Search by employee, client, project, task name
+        # Search by employee, tender, project, task name
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -1431,9 +1430,8 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(employee__profile__user__last_name__icontains=search) |
                 Q(employee__profile__user__username__icontains=search) |
                 Q(project__name__icontains=search) |
-                Q(project__client__first_name__icontains=search) |
-                Q(project__client__last_name__icontains=search) |
-                Q(project__client__name__icontains=search)
+                Q(project__tender__name__icontains=search) |
+                Q(project__tender__reference_number__icontains=search)
             )
         
         return queryset.order_by('-task_date', '-created_at')
@@ -1559,21 +1557,21 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
           * Task name
           * Employee name (who did the task)
           * Project name (for which project the task was done)
-          * Client name (who was the client)
+          * Tender name (which tender the project belongs to)
           * Task date (on which date the task was done)
           * Number of resources used
           * Grand Total of all resources in that task
           * Resource Breakdown (Resource Name, quantity, unit cost, total cost)
         
         **Search Options:**
-        - search: Search by employee name, client name, project name, or task name (case-insensitive partial match)
+        - search: Search by employee name, tender name/reference number, project name, or task name (case-insensitive partial match)
         
         **Filtering Options:**
         - month: Filter by month (1-12) - must be used with year
         - year: Filter by year (YYYY) - must be used with month
         
         **Query Parameters:**
-        - search (optional): Search by employee name, client name, project name, or task name
+        - search (optional): Search by employee name, tender name/reference number, project name, or task name
         - month (optional): Filter by month (1-12), must be used with year
         - year (optional): Filter by year (YYYY), must be used with month
         
@@ -1585,7 +1583,7 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
             openapi.Parameter(
                 'search',
                 openapi.IN_QUERY,
-                description='Search by employee name, client name, project name, or task name',
+                description='Search by employee name, tender name/reference number, project name, or task name',
                 type=openapi.TYPE_STRING,
                 required=False
             ),
@@ -1633,7 +1631,7 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
         
         **What it returns:**
         - Complete task information with all resource details
-        - Task name, employee name, project name, client name
+        - Task name, employee name, project name, tender name
         - Task date, number of resources, grand total
         - Resource breakdown with all resource details
         """,

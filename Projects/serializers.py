@@ -3,13 +3,12 @@ from .models import Project
 
 
 class ProjectListSerializer(serializers.ModelSerializer):
-    client_name = serializers.CharField(source='client.full_name', read_only=True)
-    tender_name = serializers.CharField(source='tender.name', read_only=True, allow_null=True)
+    tender_name = serializers.CharField(source='tender.name', read_only=True)
     
     class Meta:
         model = Project
         fields = [
-            'id', 'name', 'client', 'client_name', 'tender', 'tender_name',
+            'id', 'name', 'tender', 'tender_name',
             'start_date', 'end_date', 'status', 'created_at'
         ]
         read_only_fields = ['created_at']
@@ -25,13 +24,12 @@ class ProjectStatisticsSerializer(serializers.Serializer):
 
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
-    client_name = serializers.CharField(source='client.full_name', read_only=True)
-    tender_name = serializers.CharField(source='tender.name', read_only=True, allow_null=True)
+    tender_name = serializers.CharField(source='tender.name', read_only=True)
     
     class Meta:
         model = Project
         fields = [
-            'id', 'name', 'description', 'client', 'client_name', 'tender', 'tender_name',
+            'id', 'name', 'description', 'tender', 'tender_name',
             'start_date', 'end_date', 'status', 'created_at', 'updated_at',
             'created_by', 'updated_by'
         ]
@@ -42,7 +40,7 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = [
-            'id', 'name', 'description', 'client', 'tender',
+            'id', 'name', 'description', 'tender',
             'start_date', 'end_date', 'status'
         ]
         read_only_fields = ['id']

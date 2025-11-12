@@ -18,7 +18,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     """
     Project Management APIs
     """
-    queryset = Project.objects.select_related('client', 'tender', 'created_by', 'updated_by').all()
+    queryset = Project.objects.select_related('tender', 'created_by', 'updated_by').all()
     
     def get_serializer_class(self):
         if self.action in ['list']:
@@ -30,14 +30,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         
-        # Search by project name or client name
+        # Search by project name or tender name
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) |
-                Q(client__profile__user__first_name__icontains=search) |
-                Q(client__profile__user__last_name__icontains=search) |
-                Q(client__profile__user__username__icontains=search)
+                Q(tender__name__icontains=search) |
+                Q(tender__reference_number__icontains=search)
             )
         
         # Filter by status
@@ -54,17 +53,17 @@ class ProjectViewSet(viewsets.ModelViewSet):
         Retrieve a list of all projects with filtering and search options.
         
         **What it returns:**
-        - List of projects with basic information (name, client, tender, dates, status)
-        - Client name and tender name included for easy reference
+        - List of projects with basic information (name, tender, dates, status)
+        - Tender name included for easy reference
         
         **Search Options:**
-        - search: Search by project name or client name (first name, last name) (case-insensitive partial match)
+        - search: Search by project name or tender name/reference number (case-insensitive partial match)
         
         **Filter Options:**
         - status: Filter by project status (Planned, In Progress, On Hold, Completed, Canceled)
         
         **Query Parameters:**
-        - search (optional): Search by project name or client name
+        - search (optional): Search by project name or tender name/reference number
         - status (optional): Filter by project status
         
         **Pagination:**
@@ -75,7 +74,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             openapi.Parameter(
                 'search',
                 openapi.IN_QUERY,
-                description='Search by project name or client name',
+                description='Search by project name or tender name/reference number',
                 type=openapi.TYPE_STRING,
                 required=False
             ),
@@ -115,7 +114,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         
         **What it returns:**
         - Complete project information including all fields
-        - Client name and tender name for easy reference
+        - Tender name for easy reference
         - Creation and update timestamps
         """,
         tags=['Project Management'],
@@ -135,10 +134,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         
         **Required Fields:**
         - name: Project name
-        - client: ID of the client associated with this project
+        - tender: ID of the tender associated with this project
         
         **Optional Fields:**
-        - tender: ID of the tender associated with this project (if project is linked to a tender)
         - description: Project description
         - start_date: Project start date (YYYY-MM-DD)
         - end_date: Project end date (YYYY-MM-DD)

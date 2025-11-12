@@ -10,8 +10,7 @@ class Project(models.Model):
         COMPLETED = "Completed", "Completed"
         CANCELED = "Canceled", "Canceled"
 
-    client = models.ForeignKey("Clients.Client", on_delete=models.CASCADE, related_name="projects")
-    tender = models.ForeignKey("Tenders.Tender", on_delete=models.SET_NULL, related_name="projects", blank=True, null=True)
+    tender = models.ForeignKey("Tenders.Tender", on_delete=models.CASCADE, related_name="projects")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)

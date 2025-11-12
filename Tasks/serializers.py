@@ -53,7 +53,7 @@ class ActivityFeedSerializer(serializers.ModelSerializer):
 class TaskListSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
     project_name = serializers.CharField(source='project.name', read_only=True)
-    client_name = serializers.CharField(source='project.client.full_name', read_only=True)
+    tender_name = serializers.CharField(source='project.tender.name', read_only=True)
     time_taken_hours = serializers.SerializerMethodField()
     
     class Meta:
@@ -61,7 +61,7 @@ class TaskListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'task_name', 'task_date', 'location', 'time_taken_minutes',
             'time_taken_hours', 'status', 'approval_status', 'employee', 'employee_name',
-            'project', 'project_name', 'client_name', 'created_at'
+            'project', 'project_name', 'tender_name', 'created_at'
         ]
         read_only_fields = ['created_at']
     
@@ -83,7 +83,7 @@ class TaskListSerializer(serializers.ModelSerializer):
 class TaskDetailSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
     project_name = serializers.CharField(source='project.name', read_only=True)
-    client_name = serializers.CharField(source='project.client.full_name', read_only=True)
+    tender_name = serializers.CharField(source='project.tender.name', read_only=True)
     time_taken_hours = serializers.SerializerMethodField()
     attachments = TaskAttachmentSerializer(many=True, read_only=True)
     resources = TaskResourceSerializer(many=True, read_only=True)
@@ -96,7 +96,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'task_name', 'task_description', 'task_date', 'location',
             'time_taken_minutes', 'time_taken_hours', 'status', 'approval_status', 'internal_notes',
-            'employee', 'employee_name', 'project', 'project_name', 'client_name',
+            'employee', 'employee_name', 'project', 'project_name', 'tender_name',
             'attachments', 'resources', 'activity_feed',
             'created_at', 'updated_at', 'created_by', 'created_by_username',
             'updated_by', 'updated_by_username'
@@ -211,7 +211,7 @@ class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
     """Serializer for task resources dashboard list"""
     employee_name = serializers.SerializerMethodField()
     project_name = serializers.CharField(source='project.name', read_only=True)
-    client_name = serializers.SerializerMethodField()
+    tender_name = serializers.SerializerMethodField()
     resources_count = serializers.SerializerMethodField()
     grand_total = serializers.SerializerMethodField()
     resource_breakdown = serializers.SerializerMethodField()
@@ -220,7 +220,7 @@ class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'task_name', 'employee', 'employee_name', 'project', 'project_name',
-            'client_name', 'task_date', 'resources_count', 'grand_total', 'resource_breakdown'
+            'tender_name', 'task_date', 'resources_count', 'grand_total', 'resource_breakdown'
         ]
         read_only_fields = ['id']
     
@@ -232,12 +232,10 @@ class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
             return full_name if full_name else user.username
         return None
     
-    def get_client_name(self, obj):
-        """Get client name"""
-        if obj.project and obj.project.client:
-            client = obj.project.client
-            full_name = f"{client.first_name} {client.last_name}".strip()
-            return full_name if full_name else client.name or f"Client {client.id}"
+    def get_tender_name(self, obj):
+        """Get tender name"""
+        if obj.project and obj.project.tender:
+            return obj.project.tender.name
         return None
     
     def get_resources_count(self, obj):
