@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'Documents',
     'HR',
     'Inventory',
+    'Learning',
     'Notifications',
     'Profiles',
     'Projects',
@@ -532,13 +533,15 @@ CSRF_TRUSTED_ORIGINS = [
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
-SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in'
+# Only set cookie domain in production (not in development/localhost)
+SESSION_COOKIE_DOMAIN = None if DEBUG else '.electrocomsolutions.in'
 
 # CSRF Cookie Configuration
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False').lower() == 'true'
-CSRF_COOKIE_DOMAIN = '.electrocomsolutions.in'
+# Only set cookie domain in production (not in development/localhost)
+CSRF_COOKIE_DOMAIN = None if DEBUG else '.electrocomsolutions.in'
 CSRF_COOKIE_PATH = '/'
 CSRF_USE_SESSIONS = False
 CSRF_COOKIE_NAME = 'csrftoken' 

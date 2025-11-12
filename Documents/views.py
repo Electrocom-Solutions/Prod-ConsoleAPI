@@ -165,17 +165,17 @@ class DocumentTemplateViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_404_NOT_FOUND
                         )
                 else:
-                    # Check if template with same title, category, and firm exists
+                # Check if template with same title, category, and firm exists
                     if not title or not firm:
                         return Response(
                             {'error': 'title and firm are required when template_id is not provided.'},
                             status=status.HTTP_400_BAD_REQUEST
                         )
-                    existing_template = DocumentTemplate.objects.filter(
-                        title=title,
-                        category=category,
-                        firm=firm
-                    ).first()
+                existing_template = DocumentTemplate.objects.filter(
+                    title=title,
+                    category=category,
+                    firm=firm
+                ).first()
                 
                 if existing_template:
                     # Template exists - create new version

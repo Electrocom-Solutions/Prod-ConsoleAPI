@@ -75,6 +75,7 @@ All list endpoints are paginated with 20 items per page by default.
        path('api/', include('HR.urls')),
        path('api/', include('Accounts.urls')),
        path('api/', include('Inventory.urls')),
+       path('api/', include('Learning.urls')),
        path('api/', include('Notifications.urls')),
        path('api/', include('Profiles.urls')),
    ],
@@ -95,6 +96,7 @@ urlpatterns = [
     path('api/', include('HR.urls')),
     path('api/', include('Accounts.urls')),
     path('api/', include('Inventory.urls')),
+    path('api/', include('Learning.urls')),
     path('api/', include('Notifications.urls')),
     path('api/', include('Profiles.urls')),
     
