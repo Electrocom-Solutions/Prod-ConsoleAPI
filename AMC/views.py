@@ -14,7 +14,8 @@ from .serializers import (
     AMCCreateSerializer,
     AMCBillingDetailsSerializer,
     AMCStatisticsSerializer,
-    AMCBillingUpdateSerializer
+    AMCBillingUpdateSerializer,
+    AMCBillingSerializer
 )
 
 
@@ -340,7 +341,6 @@ class AMCViewSet(viewsets.ModelViewSet):
         outstanding_amount = amc.billings.filter(paid=False).aggregate(total=Sum('amount'))['total'] or 0
         
         # Serialize billings
-        from .serializers import AMCBillingSerializer
         billings_serializer = AMCBillingSerializer(amc.billings.all(), many=True)
         
         data = {
@@ -501,6 +501,5 @@ class AMCViewSet(viewsets.ModelViewSet):
         serializer.save()
         
         # Return updated billing with full details
-        from .serializers import AMCBillingSerializer
         billing_serializer = AMCBillingSerializer(billing)
         return Response(billing_serializer.data, status=status.HTTP_200_OK)
