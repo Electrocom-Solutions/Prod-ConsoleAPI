@@ -283,14 +283,12 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                 state=state,
                 pin_code=pin_code,
                 country=country,
+                aadhar_number=aadhar_number,
+                pan_number=pan_number,
                 aadhar_card=aadhar_card,
                 pan_card=pan_card,
                 created_by=request_user if request_user.is_authenticated else None
             )
-            
-            # Note: aadhar_number and pan_number are accepted but Profile model doesn't have these fields
-            # They are stored in aadhar_card and pan_card files. If you need to store numbers,
-            # you may need to add these fields to Profile model or store them elsewhere.
             
             # Create employee
             employee = Employee.objects.create(
@@ -392,6 +390,10 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                     profile.pin_code = pin_code
                 if country is not None:
                     profile.country = country
+                if aadhar_number is not None:
+                    profile.aadhar_number = aadhar_number
+                if pan_number is not None:
+                    profile.pan_number = pan_number
                 if aadhar_card is not None:
                     profile.aadhar_card = aadhar_card
                 if pan_card is not None:
