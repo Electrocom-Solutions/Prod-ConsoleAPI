@@ -459,11 +459,15 @@ def employee_forgot_password(request):
         user_email = user.email
         if not user_email:
             # If no email, return success anyway for security
-            logger.warning(f"User {user.id} has no email address for password reset")
+            logger.warning(f"⚠️ User {user.id} ({user.username}) has no email address for password reset")
+            logger.warning(f"⚠️ User profile email: {getattr(user, 'email', 'N/A')}")
+            # Still return success for security
             return Response({
                 'success': True,
                 'message': 'If the mobile number is registered, an OTP has been sent to your email address.'
             }, status=status.HTTP_200_OK)
+        
+        logger.info(f"📧 User {user.id} email address: {user_email}")
         
         # Create OTP record
         otp_record = OTP.objects.create(
@@ -476,8 +480,22 @@ def employee_forgot_password(request):
         
         # Send OTP email
         try:
-            subject = 'Password Reset OTP - Electrocom'
-            message = f"""
+            # Check if email backend is configured
+            if settings.EMAIL_BACKEND == 'django.core.mail.backends.console.EmailBackend':
+                logger.warning("⚠️ EMAIL_BACKEND is set to console - OTP email will only be printed to console, not actually sent!")
+                logger.warning(f"⚠️ OTP for user {user.id} ({user_email}): {otp_code}")
+            
+            # Check if email settings are configured
+            from_email = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
+            if not from_email:
+                logger.error("❌ Email configuration is missing. DEFAULT_FROM_EMAIL and EMAIL_HOST_USER are not set.")
+                # Still return success for security
+            elif not settings.EMAIL_HOST:
+                logger.error("❌ EMAIL_HOST is not configured in settings.")
+                # Still return success for security
+            else:
+                subject = 'Password Reset OTP - Electrocom'
+                message = f"""
 Hello {user.first_name or 'Employee'},
 
 You have requested to reset your password for your Electrocom employee account.
@@ -491,7 +509,7 @@ If you did not request this password reset, please ignore this email.
 Best regards,
 Electrocom Team
 """
-            html_message = f"""
+                html_message = f"""
 <!DOCTYPE html>
 <html>
 <head>
@@ -527,20 +545,23 @@ Electrocom Team
 </body>
 </html>
 """
-            
-            from_email = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=from_email,
-                recipient_list=[user_email],
-                html_message=html_message,
-                fail_silently=False,
-            )
-            
-            logger.info(f"Password reset OTP sent to {user_email} for user {user.id}")
+                
+                logger.info(f"📧 Attempting to send OTP email to {user_email} for user {user.id}")
+                logger.info(f"📧 Email config - Backend: {settings.EMAIL_BACKEND}, Host: {settings.EMAIL_HOST}, From: {from_email}")
+                
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=from_email,
+                    recipient_list=[user_email],
+                    html_message=html_message,
+                    fail_silently=False,
+                )
+                
+                logger.info(f"✅ Password reset OTP sent successfully to {user_email} for user {user.id}")
         except Exception as e:
-            logger.error(f"Error sending password reset OTP email: {str(e)}", exc_info=True)
+            logger.error(f"❌ Error sending password reset OTP email to {user_email}: {str(e)}", exc_info=True)
+            logger.error(f"❌ Email config - Backend: {settings.EMAIL_BACKEND}, Host: {settings.EMAIL_HOST}, From: {from_email if 'from_email' in locals() else 'N/A'}")
             # Still return success for security
     
     return Response({
