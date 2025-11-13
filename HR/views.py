@@ -47,6 +47,9 @@ from .serializers import (
     HolidayCalendarStatisticsSerializer
 )
 from Notifications.utils import send_notification_to_user
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
@@ -319,8 +322,57 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         }
     )
     def destroy(self, request, *args, **kwargs):
-        """Delete an employee"""
-        return super().destroy(request, *args, **kwargs)
+        """Delete an employee and associated User and Profile if not shared"""
+        instance = self.get_object()
+        
+        # Get the associated Profile and User before deletion
+        profile = instance.profile
+        user = profile.user
+        profile_id = profile.id
+        user_id = user.id
+        username = user.username
+        
+        # Check if Profile is used by other models before deletion
+        from HR.models import ContractWorker
+        from Clients.models import Client
+        from Accounts.models import BankAccount
+        
+        # Check if this profile is used by other employees
+        other_employees = Employee.objects.filter(profile=profile).exclude(id=instance.id).exists()
+        # Check if profile is used by contract workers
+        has_contract_workers = ContractWorker.objects.filter(profile=profile).exists()
+        # Check if profile is used by clients
+        has_clients = Client.objects.filter(profile=profile).exists()
+        # Check if profile is used by bank accounts
+        has_bank_accounts = BankAccount.objects.filter(profile=profile).exists()
+        
+        # Delete the employee (this will cascade delete the profile if no other references)
+        response = super().destroy(request, *args, **kwargs)
+        
+        # If profile was only used by this employee, it should be deleted by cascade
+        # Now check if user has any remaining profiles
+        if not other_employees and not has_contract_workers and not has_clients and not has_bank_accounts:
+            # Profile should be deleted, now check if user has any remaining profiles
+            from Profiles.models import Profile
+            remaining_profiles = Profile.objects.filter(user_id=user_id).exists()
+            
+            # If user has no remaining profiles, delete the user and related data
+            if not remaining_profiles:
+                # Delete related data first
+                from Profiles.models import Email, MobileNumber, OTP
+                Email.objects.filter(user_id=user_id).delete()
+                MobileNumber.objects.filter(user_id=user_id).delete()
+                OTP.objects.filter(user_id=user_id).delete()
+                
+                # Delete the user
+                try:
+                    user_to_delete = User.objects.get(id=user_id)
+                    user_to_delete.delete()
+                    logger.info(f"Deleted user {user_id} ({username}) after deleting employee {instance.id}")
+                except User.DoesNotExist:
+                    logger.warning(f"User {user_id} ({username}) was already deleted")
+        
+        return response
     
     @swagger_auto_schema(
         operation_id='employee_statistics',

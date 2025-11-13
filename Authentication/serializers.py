@@ -284,8 +284,8 @@ class EmployeeResetPasswordSerializer(serializers.Serializer):
         required=True,
         write_only=True,
         style={'input_type': 'password'},
-        min_length=8,
-        help_text="New password (minimum 8 characters)"
+        min_length=6,
+        help_text="New password (minimum 6 characters)"
     )
     confirm_password = serializers.CharField(
         required=True,
@@ -312,9 +312,9 @@ class EmployeeResetPasswordSerializer(serializers.Serializer):
             })
         
         # Validate password length
-        if len(new_password) < 8:
+        if len(new_password) < 6:
             raise serializers.ValidationError({
-                'error': 'Password must be at least 8 characters long.'
+                'error': 'Password must be at least 6 characters long.'
             })
         
         # Find user by mobile number

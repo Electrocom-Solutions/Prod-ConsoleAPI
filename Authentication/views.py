@@ -653,7 +653,7 @@ def employee_verify_otp(request):
     **Request Fields:**
     - mobile_number: Employee's mobile number
     - otp: 6-digit OTP code (must be verified)
-    - new_password: New password (minimum 8 characters)
+    - new_password: New password (minimum 6 characters)
     - confirm_password: Confirm new password
     
     **Response:**
@@ -703,10 +703,16 @@ def employee_reset_password(request):
     user.set_password(new_password)
     user.save()
     
-    # Delete OTP record to prevent reuse
-    otp_record.delete()
+    # Delete the used OTP record and all other password reset OTPs for this user
+    # to prevent reuse and clean up old OTPs
+    from Profiles.models import OTP
+    OTP.objects.filter(
+        user=user,
+        otp_type=OTP.OTPType.E,
+        otp_for=OTP.OTPFor.RESET
+    ).delete()
     
-    logger.info(f"Password reset successful for user {user.id}")
+    logger.info(f"Password reset successful for user {user.id}. All password reset OTPs deleted.")
     
     return Response({
         'success': True,
