@@ -10,8 +10,20 @@ from django.utils import timezone
 from datetime import timedelta
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from django.core.mail import send_mail
+from django.conf import settings
+import random
+import logging
 
-from .serializers import OwnerLoginSerializer, EmployeeMobileLoginSerializer
+logger = logging.getLogger(__name__)
+
+from .serializers import (
+    OwnerLoginSerializer, 
+    EmployeeMobileLoginSerializer,
+    EmployeeForgotPasswordSerializer,
+    EmployeeVerifyOTPSerializer,
+    EmployeeResetPasswordSerializer
+)
 
 
 @swagger_auto_schema(
@@ -351,4 +363,331 @@ def get_current_user(request):
             'is_superuser': user.is_superuser,
             'is_staff': user.is_staff,
         },
+    }, status=status.HTTP_200_OK)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_id='employee_forgot_password',
+    operation_summary="Employee Forgot Password",
+    operation_description="""
+    Request password reset for employee mobile app.
+    
+    **Features:**
+    - Accepts mobile number
+    - Validates mobile number belongs to an employee
+    - Generates 6-digit OTP
+    - Sends OTP to employee's email address
+    - Stores OTP in database for verification
+    
+    **Security:**
+    - Does not reveal if mobile number exists (returns success message regardless)
+    - OTP expires after 10 minutes
+    - Rate limiting: Max 3 requests per mobile number per hour
+    
+    **Request Fields:**
+    - mobile_number: Employee's mobile number (e.g., "9876543210")
+    
+    **Response:**
+    Returns success message if mobile number is valid (for security, always returns success).
+    """,
+    tags=['Authentication'],
+    request_body=EmployeeForgotPasswordSerializer,
+    responses={
+        200: openapi.Response(
+            description="OTP sent successfully (or generic success message)",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'success': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Success status'),
+                    'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                }
+            )
+        ),
+        400: openapi.Response(
+            description="Validation error",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
+                }
+            )
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def employee_forgot_password(request):
+    """
+    Employee forgot password endpoint
+    Sends OTP to employee's email for password reset
+    """
+    serializer = EmployeeForgotPasswordSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if user and employee exist (from serializer validation)
+    user = serializer.validated_data.get('user')
+    employee = serializer.validated_data.get('employee')
+    
+    # For security, always return success message
+    # Only send OTP if user and employee exist
+    if user and employee:
+        # Rate limiting: Check if too many requests in last hour
+        from Profiles.models import OTP
+        one_hour_ago = timezone.now() - timedelta(hours=1)
+        recent_otps = OTP.objects.filter(
+            user=user,
+            otp_type=OTP.OTPType.E,
+            otp_for=OTP.OTPFor.RESET,
+            created_at__gte=one_hour_ago
+        ).count()
+        
+        if recent_otps >= 3:
+            # Still return success for security, but don't send OTP
+            logger.warning(f"Rate limit exceeded for mobile number password reset: {serializer.validated_data.get('mobile_number')}")
+            return Response({
+                'success': True,
+                'message': 'If the mobile number is registered, an OTP has been sent to your email address.'
+            }, status=status.HTTP_200_OK)
+        
+        # Generate 6-digit OTP
+        otp_code = str(random.randint(100000, 999999))
+        
+        # Get user's email
+        user_email = user.email
+        if not user_email:
+            # If no email, return success anyway for security
+            logger.warning(f"User {user.id} has no email address for password reset")
+            return Response({
+                'success': True,
+                'message': 'If the mobile number is registered, an OTP has been sent to your email address.'
+            }, status=status.HTTP_200_OK)
+        
+        # Create OTP record
+        otp_record = OTP.objects.create(
+            user=user,
+            otp=otp_code,
+            otp_type=OTP.OTPType.E,
+            otp_for=OTP.OTPFor.RESET,
+            is_verified=False
+        )
+        
+        # Send OTP email
+        try:
+            subject = 'Password Reset OTP - Electrocom'
+            message = f"""
+Hello {user.first_name or 'Employee'},
+
+You have requested to reset your password for your Electrocom employee account.
+
+Your OTP code is: {otp_code}
+
+This OTP will expire in 10 minutes.
+
+If you did not request this password reset, please ignore this email.
+
+Best regards,
+Electrocom Team
+"""
+            html_message = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #0ea5e9; color: white; padding: 20px; text-align: center; }}
+        .content {{ padding: 20px; background-color: #f9f9f9; }}
+        .otp-box {{ background-color: #fff; border: 2px solid #0ea5e9; padding: 15px; text-align: center; margin: 20px 0; }}
+        .otp-code {{ font-size: 32px; font-weight: bold; color: #0ea5e9; letter-spacing: 5px; }}
+        .footer {{ padding: 20px; text-align: center; color: #666; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Password Reset Request</h1>
+        </div>
+        <div class="content">
+            <p>Hello {user.first_name or 'Employee'},</p>
+            <p>You have requested to reset your password for your Electrocom employee account.</p>
+            <div class="otp-box">
+                <p style="margin: 0 0 10px 0;">Your OTP code is:</p>
+                <div class="otp-code">{otp_code}</div>
+            </div>
+            <p>This OTP will expire in <strong>10 minutes</strong>.</p>
+            <p>If you did not request this password reset, please ignore this email.</p>
+        </div>
+        <div class="footer">
+            <p>Best regards,<br>Electrocom Team</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+            
+            from_email = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=from_email,
+                recipient_list=[user_email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+            
+            logger.info(f"Password reset OTP sent to {user_email} for user {user.id}")
+        except Exception as e:
+            logger.error(f"Error sending password reset OTP email: {str(e)}", exc_info=True)
+            # Still return success for security
+    
+    return Response({
+        'success': True,
+        'message': 'If the mobile number is registered, an OTP has been sent to your email address.'
+    }, status=status.HTTP_200_OK)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_id='employee_verify_otp',
+    operation_summary="Verify OTP for Password Reset",
+    operation_description="""
+    Verify OTP code for password reset.
+    
+    **Features:**
+    - Validates OTP code
+    - Checks if OTP is not expired (10 minutes)
+    - Marks OTP as verified
+    
+    **Request Fields:**
+    - mobile_number: Employee's mobile number
+    - otp: 6-digit OTP code
+    
+    **Response:**
+    Returns success message if OTP is valid.
+    """,
+    tags=['Authentication'],
+    request_body=EmployeeVerifyOTPSerializer,
+    responses={
+        200: openapi.Response(
+            description="OTP verified successfully",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'success': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Success status'),
+                    'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                }
+            )
+        ),
+        400: openapi.Response(
+            description="Invalid or expired OTP",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
+                }
+            )
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def employee_verify_otp(request):
+    """
+    Employee verify OTP endpoint
+    Verifies OTP code for password reset
+    """
+    serializer = EmployeeVerifyOTPSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    otp_record = serializer.validated_data['otp_record']
+    
+    # Mark OTP as verified
+    otp_record.is_verified = True
+    otp_record.save()
+    
+    return Response({
+        'success': True,
+        'message': 'OTP verified successfully. You can now reset your password.'
+    }, status=status.HTTP_200_OK)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_id='employee_reset_password',
+    operation_summary="Reset Employee Password",
+    operation_description="""
+    Reset employee password using verified OTP.
+    
+    **Features:**
+    - Validates OTP is verified
+    - Validates passwords match
+    - Updates user password
+    - Invalidates used OTP
+    
+    **Request Fields:**
+    - mobile_number: Employee's mobile number
+    - otp: 6-digit OTP code (must be verified)
+    - new_password: New password (minimum 8 characters)
+    - confirm_password: Confirm new password
+    
+    **Response:**
+    Returns success message if password is reset successfully.
+    """,
+    tags=['Authentication'],
+    request_body=EmployeeResetPasswordSerializer,
+    responses={
+        200: openapi.Response(
+            description="Password reset successfully",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'success': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Success status'),
+                    'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                }
+            )
+        ),
+        400: openapi.Response(
+            description="Validation error",
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
+                }
+            )
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def employee_reset_password(request):
+    """
+    Employee reset password endpoint
+    Resets password using verified OTP
+    """
+    serializer = EmployeeResetPasswordSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    user = serializer.validated_data['user']
+    new_password = serializer.validated_data['new_password']
+    otp_record = serializer.validated_data['otp_record']
+    
+    # Update password
+    user.set_password(new_password)
+    user.save()
+    
+    # Delete OTP record to prevent reuse
+    otp_record.delete()
+    
+    logger.info(f"Password reset successful for user {user.id}")
+    
+    return Response({
+        'success': True,
+        'message': 'Password has been reset successfully. You can now login with your new password.'
     }, status=status.HTTP_200_OK)
