@@ -255,6 +255,18 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         request_user = self.context['request'].user
         
         with transaction.atomic():
+            # Validate email uniqueness before creating user
+            if User.objects.filter(email=email).exists():
+                raise serializers.ValidationError({
+                    'email': 'A user with this email address already exists.'
+                })
+            
+            # Validate employee_code uniqueness
+            if Employee.objects.filter(employee_code=employee_code).exists():
+                raise serializers.ValidationError({
+                    'employee_code': 'An employee with this employee code already exists.'
+                })
+            
             # Create user
             username = email or f"employee_{Employee.objects.count() + 1}"
             base_username = username
@@ -264,13 +276,19 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                 counter += 1
             
             # Set password to phone_number (mobile number)
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                first_name=first_name,
-                last_name=last_name,
-                password=phone_number
-            )
+            try:
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    password=phone_number
+                )
+            except Exception as e:
+                # If user creation fails (e.g., duplicate email), raise ValidationError
+                raise serializers.ValidationError({
+                    'email': f'Failed to create user: {str(e)}'
+                })
             
             # Create profile
             profile = Profile.objects.create(
@@ -304,37 +322,40 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             if phone_number:
                 phone_number_cleaned = str(phone_number).strip()
                 if phone_number_cleaned:
-                    try:
-                        # Check if mobile number already exists for another user
-                        existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number_cleaned).first()
-                        if existing_mobile:
-                            # If exists for different user, raise error
-                            if existing_mobile.user != user:
-                                raise serializers.ValidationError({
-                                    'phone_number': 'This mobile number is already associated with another user.'
-                                })
-                            # If exists for same user, update it to be primary
-                            existing_mobile.is_primary = True
-                            existing_mobile.updated_by = request_user if request_user.is_authenticated else None
-                            existing_mobile.save()
-                        else:
-                            # Mark any existing mobile numbers for this user as non-primary
-                            MobileNumber.objects.filter(user=user).update(is_primary=False)
-                            # Create new mobile number as primary
+                    # Check if mobile number already exists for another user
+                    existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number_cleaned).first()
+                    if existing_mobile:
+                        # If exists for different user, raise error
+                        if existing_mobile.user != user:
+                            raise serializers.ValidationError({
+                                'phone_number': 'This mobile number is already associated with another user.'
+                            })
+                        # If exists for same user, update it to be primary
+                        existing_mobile.is_primary = True
+                        existing_mobile.updated_by = request_user if request_user.is_authenticated else None
+                        existing_mobile.save()
+                    else:
+                        # Mark any existing mobile numbers for this user as non-primary
+                        MobileNumber.objects.filter(user=user).update(is_primary=False)
+                        # Create new mobile number as primary
+                        try:
                             MobileNumber.objects.create(
                                 user=user,
                                 mobile_number=phone_number_cleaned,
                                 is_primary=True,
                                 created_by=request_user if request_user.is_authenticated else None
                             )
-                    except Exception as e:
-                        # Log the error and re-raise with a more user-friendly message
-                        import logging
-                        logger = logging.getLogger(__name__)
-                        logger.error(f"Error creating mobile number for employee: {str(e)}")
-                        raise serializers.ValidationError({
-                            'phone_number': f'Failed to save mobile number: {str(e)}'
-                        })
+                        except Exception as e:
+                            # Log the error and raise ValidationError with clear message
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.error(f"Error creating mobile number for employee: {str(e)}")
+                            # Extract actual error message if it's a ValidationError
+                            if isinstance(e, serializers.ValidationError):
+                                raise
+                            raise serializers.ValidationError({
+                                'phone_number': f'Failed to save mobile number: {str(e)}'
+                            })
             
             return employee
     

@@ -322,66 +322,46 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         }
     )
     def destroy(self, request, *args, **kwargs):
-        """Delete an employee and associated User and Profile if not shared"""
+        """Delete an employee and always delete associated User and Profile"""
         instance = self.get_object()
         
         # Get the associated Profile and User before deletion
         profile = instance.profile
         user = profile.user
-        profile_id = profile.id
         user_id = user.id
         username = user.username
-        
-        # Check if Profile is used by other models before deletion
-        from HR.models import ContractWorker
-        from Clients.models import Client
-        from Accounts.models import BankAccount
-        
-        # Check if this profile is used by other employees
-        other_employees = Employee.objects.filter(profile=profile).exclude(id=instance.id).exists()
-        # Check if profile is used by contract workers
-        has_contract_workers = ContractWorker.objects.filter(profile=profile).exists()
-        # Check if profile is used by clients
-        has_clients = Client.objects.filter(profile=profile).exists()
-        # Check if profile is used by bank accounts
-        has_bank_accounts = BankAccount.objects.filter(profile=profile).exists()
-        
-        # Store whether profile will be deleted (only used by this employee)
-        profile_will_be_deleted = not other_employees and not has_contract_workers and not has_clients and not has_bank_accounts
         
         # Delete the employee (this will cascade delete the profile if no other references)
         response = super().destroy(request, *args, **kwargs)
         
-        # If profile was deleted by cascade, check if we need to delete the user
-        if profile_will_be_deleted:
-            # Profile was deleted, now check if user has any remaining profiles
-            from Profiles.models import Profile
-            remaining_profiles = Profile.objects.filter(user_id=user_id).exists()
-            
-            # If user has no remaining profiles, delete the user and related data
-            if not remaining_profiles:
-                # Delete related data first (Email, MobileNumber, OTP)
-                # Note: Notifications and DeviceTokens will be automatically deleted via CASCADE
-                from Profiles.models import Email, MobileNumber, OTP
-                Email.objects.filter(user_id=user_id).delete()
-                MobileNumber.objects.filter(user_id=user_id).delete()
-                OTP.objects.filter(user_id=user_id).delete()
-                
-                # Delete the user (this will cascade delete:
-                # - All Profiles (already deleted)
-                # - All Notifications (CASCADE)
-                # - All DeviceTokens (CASCADE)
-                # - All other CASCADE relationships)
-                try:
-                    user_to_delete = User.objects.get(id=user_id)
-                    user_to_delete.delete()
-                    logger.info(f"✅ Deleted user {user_id} ({username}) and all related data after deleting employee {instance.id}")
-                except User.DoesNotExist:
-                    logger.warning(f"⚠️ User {user_id} ({username}) was already deleted")
-            else:
-                logger.info(f"ℹ️ User {user_id} ({username}) has other profiles, not deleted")
-        else:
-            logger.info(f"ℹ️ Profile {profile_id} is shared with other models, not deleted")
+        # Always delete Profile and User when Employee is deleted
+        # Delete Profile first (CASCADE will handle related records)
+        try:
+            profile_to_delete = Profile.objects.get(id=profile.id)
+            profile_to_delete.delete()
+            logger.info(f"✅ Deleted profile {profile.id} after deleting employee {instance.id}")
+        except Profile.DoesNotExist:
+            logger.warning(f"⚠️ Profile {profile.id} was already deleted")
+        
+        # Delete User and all related data
+        # Delete related data first (Email, MobileNumber, OTP)
+        # Note: Notifications and DeviceTokens will be automatically deleted via CASCADE
+        from Profiles.models import Email, MobileNumber, OTP
+        Email.objects.filter(user_id=user_id).delete()
+        MobileNumber.objects.filter(user_id=user_id).delete()
+        OTP.objects.filter(user_id=user_id).delete()
+        
+        # Delete the user (this will cascade delete:
+        # - All remaining Profiles (if any)
+        # - All Notifications (CASCADE)
+        # - All DeviceTokens (CASCADE)
+        # - All other CASCADE relationships)
+        try:
+            user_to_delete = User.objects.get(id=user_id)
+            user_to_delete.delete()
+            logger.info(f"✅ Deleted user {user_id} ({username}) and all related data after deleting employee {instance.id}")
+        except User.DoesNotExist:
+            logger.warning(f"⚠️ User {user_id} ({username}) was already deleted")
         
         return response
     
