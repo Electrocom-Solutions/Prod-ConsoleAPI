@@ -22,17 +22,22 @@ class TenderListSerializer(serializers.ModelSerializer):
     security_deposit_2 = serializers.SerializerMethodField()
     pending_emd_amount = serializers.SerializerMethodField()
     has_pending_emd = serializers.SerializerMethodField()
+    firm_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Tender
         fields = [
-            'id', 'name', 'reference_number', 'firm', 'filed_date', 'start_date',
+            'id', 'name', 'reference_number', 'firm', 'firm_name', 'filed_date', 'start_date',
             'end_date', 'estimated_value', 'status', 'emd_collected',
             'emd_collected_date', 'total_emd_cost',
             'security_deposit_1', 'security_deposit_2', 'pending_emd_amount',
             'has_pending_emd', 'created_at'
         ]
         read_only_fields = ['created_at']
+    
+    def get_firm_name(self, obj):
+        """Get firm name if firm is associated"""
+        return obj.firm.firm_name if obj.firm else None
     
     def get_total_emd_cost(self, obj):
         """Calculate total EMD cost (Security Deposit 1 + Security Deposit 2)"""

@@ -30,7 +30,7 @@ class TenderViewSet(viewsets.ModelViewSet):
     """
     Tender Management APIs
     """
-    queryset = Tender.objects.select_related('created_by', 'updated_by').prefetch_related('deposits', 'documents', 'documents__created_by').all()
+    queryset = Tender.objects.select_related('created_by', 'updated_by', 'firm').prefetch_related('deposits', 'documents', 'documents__created_by').all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get_serializer_class(self):

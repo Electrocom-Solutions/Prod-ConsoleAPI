@@ -4,14 +4,14 @@ from .models import Tender, TenderDeposit, TenderDocument
 
 @admin.register(Tender)
 class TenderAdmin(admin.ModelAdmin):
-    list_display = ('name', 'reference_number', 'status', 'filed_date', 'start_date', 'end_date', 'estimated_value', 'created_at')
-    list_filter = ('status', 'filed_date', 'start_date', 'end_date', 'created_at', 'updated_at')
-    search_fields = ('name', 'reference_number', 'description')
+    list_display = ('name', 'reference_number', 'firm', 'status', 'filed_date', 'start_date', 'end_date', 'estimated_value', 'created_at')
+    list_filter = ('status', 'firm', 'filed_date', 'start_date', 'end_date', 'created_at', 'updated_at')
+    search_fields = ('name', 'reference_number', 'description', 'firm__firm_name')
     date_hierarchy = 'filed_date'
     readonly_fields = ('created_at', 'updated_at', 'created_by', 'updated_by')
     fieldsets = (
         ('Tender Information', {
-            'fields': ('name', 'reference_number', 'description', 'status')
+            'fields': ('name', 'reference_number', 'description', 'firm', 'status')
         }),
         ('Date Information', {
             'fields': ('filed_date', 'start_date', 'end_date')
