@@ -532,16 +532,46 @@ CSRF_TRUSTED_ORIGINS = [
 # Session Configuration
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
-# Only set cookie domain in production (not in development/localhost)
-SESSION_COOKIE_DOMAIN = None if DEBUG else '.electrocomsolutions.in'
+
+# Determine if we're in production based on allowed hosts or environment variable
+# Check if production domain is in ALLOWED_HOSTS or if explicitly set via env var
+# Priority: explicit env var > DEBUG=False > production domain in ALLOWED_HOSTS
+IS_PRODUCTION = (
+    os.getenv('IS_PRODUCTION', '').lower() == 'true' or  # Explicit override
+    not DEBUG or  # If DEBUG is False, definitely production
+    any('electrocomsolutions.in' in host for host in ALLOWED_HOSTS)  # Production domain detected
+)
+
+# Session cookie secure: True for HTTPS in production, False for HTTP in development
+# If explicitly set via env var, use that value; otherwise auto-detect based on IS_PRODUCTION
+SESSION_COOKIE_SECURE_ENV = os.getenv('SESSION_COOKIE_SECURE', '')
+SESSION_COOKIE_SECURE = (
+    SESSION_COOKIE_SECURE_ENV.lower() == 'true' if SESSION_COOKIE_SECURE_ENV
+    else IS_PRODUCTION  # Auto-detect: True in production (HTTPS), False in development
+)
+
+# Session cookie domain: Set to .electrocomsolutions.in in production for cross-subdomain support
+# None in development (localhost) to allow local testing
+SESSION_COOKIE_DOMAIN = '.electrocomsolutions.in' if IS_PRODUCTION else None
 
 # CSRF Cookie Configuration
 CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False').lower() == 'true'
-# Only set cookie domain in production (not in development/localhost)
-CSRF_COOKIE_DOMAIN = None if DEBUG else '.electrocomsolutions.in'
+CSRF_COOKIE_HTTPONLY = False  # Must be False to allow JavaScript access
+
+# CSRF cookie secure: True for HTTPS in production, False for HTTP in development
+# This MUST match the protocol being used (True for HTTPS, False for HTTP)
+# If explicitly set via env var, use that value; otherwise auto-detect based on IS_PRODUCTION
+CSRF_COOKIE_SECURE_ENV = os.getenv('CSRF_COOKIE_SECURE', '')
+CSRF_COOKIE_SECURE = (
+    CSRF_COOKIE_SECURE_ENV.lower() == 'true' if CSRF_COOKIE_SECURE_ENV
+    else IS_PRODUCTION  # Auto-detect: True in production (HTTPS), False in development
+)
+
+# CSRF cookie domain: Set to .electrocomsolutions.in in production for cross-subdomain support
+# This allows the CSRF cookie to work across console.electrocomsolutions.in and consoleapi.electrocomsolutions.in
+# None in development (localhost) to allow local testing
+CSRF_COOKIE_DOMAIN = '.electrocomsolutions.in' if IS_PRODUCTION else None
+
 CSRF_COOKIE_PATH = '/'
 CSRF_USE_SESSIONS = False
 CSRF_COOKIE_NAME = 'csrftoken' 
