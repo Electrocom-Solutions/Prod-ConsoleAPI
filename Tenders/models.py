@@ -13,6 +13,7 @@ class Tender(models.Model):
     name = models.CharField(max_length=255)
     reference_number = models.CharField(max_length=100, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
+    firm = models.ForeignKey("Clients.Firm", on_delete=models.SET_NULL, related_name="tenders", blank=True, null=True, help_text="Firm associated with this tender")
     filed_date = models.DateField(blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)
     end_date = models.DateField(blank=True, null=True)

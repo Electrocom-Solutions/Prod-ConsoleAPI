@@ -65,6 +65,15 @@ class TenderViewSet(viewsets.ModelViewSet):
                 emd_collected=False
             )
         
+        # Filter by firm
+        firm_filter = self.request.query_params.get('firm', None)
+        if firm_filter:
+            try:
+                firm_id = int(firm_filter)
+                queryset = queryset.filter(firm_id=firm_id)
+            except (ValueError, TypeError):
+                pass  # Invalid firm ID, ignore filter
+        
         return queryset.order_by('-created_at')
     
     def _calculate_pending_emd_for_tender(self, tender):
@@ -101,11 +110,13 @@ class TenderViewSet(viewsets.ModelViewSet):
           * Pending EMDs are tenders in "Closed" or "Lost" status
           * Closed tenders: collect whole EMD (Security Deposit 1 + Security Deposit 2)
           * Lost tenders: collect only Security Deposit 1
+        - firm: Filter by firm ID (integer)
         
         **Query Parameters:**
         - search (optional): Search by tender name or reference number
         - status (optional): Filter by status (Filed, Awarded, Lost, Closed)
         - pending_emds (optional): Filter by pending EMDs (true/false)
+        - firm (optional): Filter by firm ID
         
         **Pagination:**
         Results are paginated (20 items per page by default) and sorted by creation date (newest first).
@@ -131,6 +142,13 @@ class TenderViewSet(viewsets.ModelViewSet):
                 openapi.IN_QUERY,
                 description='Filter tenders with pending EMDs (true/false). Pending EMDs are tenders in Closed or Lost status.',
                 type=openapi.TYPE_BOOLEAN,
+                required=False
+            ),
+            openapi.Parameter(
+                'firm',
+                openapi.IN_QUERY,
+                description='Filter by firm ID',
+                type=openapi.TYPE_INTEGER,
                 required=False
             ),
         ],

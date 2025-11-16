@@ -3,6 +3,7 @@ from django.db.models import Sum, Q
 from django.db import transaction
 from .models import Tender, TenderDeposit, TenderDocument
 from Analytics.models import ActivityLog
+from Clients.models import Firm
 
 
 class TenderDepositSerializer(serializers.ModelSerializer):
@@ -25,7 +26,7 @@ class TenderListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tender
         fields = [
-            'id', 'name', 'reference_number', 'filed_date', 'start_date',
+            'id', 'name', 'reference_number', 'firm', 'filed_date', 'start_date',
             'end_date', 'estimated_value', 'status', 'emd_collected',
             'emd_collected_date', 'total_emd_cost',
             'security_deposit_1', 'security_deposit_2', 'pending_emd_amount',
@@ -117,7 +118,7 @@ class TenderDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tender
         fields = [
-            'id', 'name', 'reference_number', 'description', 'filed_date',
+            'id', 'name', 'reference_number', 'description', 'firm', 'filed_date',
             'start_date', 'end_date', 'estimated_value', 'status',
             'emd_collected', 'emd_collected_date', 'emd_collected_by',
             'total_emd_cost', 'security_deposit_1', 'security_deposit_2',
@@ -183,10 +184,17 @@ class TenderCreateSerializer(serializers.ModelSerializer):
     security_deposit_2_dd_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     security_deposit_2_dd_bank_name = serializers.CharField(max_length=255, required=False, allow_blank=True, allow_null=True)
     security_deposit_2_dd_beneficiary_name = serializers.CharField(max_length=255, required=False, allow_blank=True, allow_null=True)
+    firm = serializers.PrimaryKeyRelatedField(
+        queryset=Firm.objects.all(),
+        required=False,
+        allow_null=True,
+        help_text='Firm associated with this tender'
+    )
+    
     class Meta:
         model = Tender
         fields = [
-            'id', 'name', 'reference_number', 'description', 'filed_date',
+            'id', 'name', 'reference_number', 'description', 'firm', 'filed_date',
             'start_date', 'end_date', 'estimated_value', 'status',
             'security_deposit_1_dd_date', 'security_deposit_1_dd_number',
             'security_deposit_1_dd_amount', 'security_deposit_1_dd_bank_name',
