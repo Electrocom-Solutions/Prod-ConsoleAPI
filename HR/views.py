@@ -1348,6 +1348,30 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         
+        # Auto-filter by logged-in user's employee record for non-admin users
+        # This ensures mobile app users only see their own attendance
+        # Admin users can still see all attendance or filter by specific employees
+        user = self.request.user
+        employee_filter = self.request.query_params.get('employee', None)
+        
+        # If user is not staff/admin and no explicit employee filter is provided,
+        # automatically filter by the user's employee record
+        if not (user.is_staff or user.is_superuser) and not employee_filter:
+            try:
+                # Get the employee record associated with this user
+                user_employee = Employee.objects.get(profile__user=user)
+                queryset = queryset.filter(employee=user_employee)
+            except Employee.DoesNotExist:
+                # User doesn't have an employee record, return empty queryset
+                queryset = queryset.none()
+            except Employee.MultipleObjectsReturned:
+                # Multiple employee records found, use the first one
+                user_employee = Employee.objects.filter(profile__user=user).first()
+                if user_employee:
+                    queryset = queryset.filter(employee=user_employee)
+                else:
+                    queryset = queryset.none()
+        
         # Search by employee name
         search = self.request.query_params.get('search', None)
         if search:
@@ -1358,9 +1382,11 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 Q(employee__employee_code__icontains=search)
             )
         
-        # Filter by employee ID
-        employee_filter = self.request.query_params.get('employee', None)
+        # Filter by employee ID (only if explicitly provided and user has permission)
+        # Note: employee_filter was already retrieved above for the auto-filter logic
         if employee_filter:
+            # Allow admin users to filter by any employee
+            # For non-admin users, this should match their own employee ID (already filtered above)
             queryset = queryset.filter(employee_id=employee_filter)
         
         # Filter by date (brings all attendance for that particular date)
