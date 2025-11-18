@@ -836,13 +836,14 @@ class BulkUploadContractWorkerSerializer(serializers.Serializer):
 class AttendanceListSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
     employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    check_in_selfie_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Attendance
         fields = [
             'id', 'employee', 'employee_name', 'employee_code', 'attendance_date',
             'attendance_status', 'approval_status', 'check_in_time', 'check_out_time',
-            'notes', 'created_at'
+            'check_in_selfie_url', 'notes', 'created_at'
         ]
         read_only_fields = ['created_at']
     
@@ -852,6 +853,15 @@ class AttendanceListSerializer(serializers.ModelSerializer):
             user = obj.employee.profile.user
             full_name = f"{user.first_name} {user.last_name}".strip()
             return full_name if full_name else user.username
+        return None
+    
+    def get_check_in_selfie_url(self, obj):
+        """Get check-in selfie URL"""
+        if obj.check_in_selfie:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.check_in_selfie.url)
+            return obj.check_in_selfie.url
         return None
 
 
