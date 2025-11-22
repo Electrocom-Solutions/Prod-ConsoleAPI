@@ -819,6 +819,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         - Sr. No. (optional, for reference)
         - First Name (required)
         - Last Name (required)
+        - Father Name (optional)
         - Email (required)
         - Phone Number (optional)
         - Date Of Birth (dd/mm/yy format) (optional)
@@ -832,11 +833,11 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         - Salary (monthly salary) (required)
         - Aadhar Number (required)
         - UAN Number (optional)
+        - ESI (optional)
         - Department (optional)
         - Bank Name (optional)
         - Account Number (optional)
         - IFSC Code (optional)
-        - Bank Branch (optional)
         - Project (optional) - Project name or ID to assign the worker to a project
         
         **What it does:**
@@ -918,6 +919,8 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'sr no.': 'sr_no',
                 'first name': 'first_name',
                 'last name': 'last_name',
+                'father name': 'father_name',
+                'fathername': 'father_name',
                 'phone number': 'phone_number',
                 'date of birth (dd/mm/yy)': 'date_of_birth',
                 'date of birth': 'date_of_birth',
@@ -934,12 +937,12 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'aadhar no': 'aadhar_no',
                 'uan number': 'uan_number',
                 'uan': 'uan_number',
+                'esi': 'esi',
+                'esi number': 'esi',
                 'account number': 'account_number',
                 'bank account number': 'account_number',
                 'ifsc code': 'ifsc_code',
                 'ifsc': 'ifsc_code',
-                'bank branch': 'bank_branch',
-                'branch': 'bank_branch',
                 'project': 'project',
                 'project name': 'project',
                 'project_id': 'project'
@@ -969,6 +972,12 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                         df = df.rename(columns={col: 'last_name'})
                         break
             
+            if 'father_name' not in df.columns:
+                for col in df.columns:
+                    if 'father name' in col or 'fathername' in col:
+                        df = df.rename(columns={col: 'father_name'})
+                        break
+            
             if 'monthly_salary' not in df.columns:
                 for col in df.columns:
                     if 'salary' in col:
@@ -985,6 +994,12 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 for col in df.columns:
                     if 'ifsc' in col:
                         df = df.rename(columns={col: 'ifsc_code'})
+                        break
+            
+            if 'esi' not in df.columns:
+                for col in df.columns:
+                    if 'esi' in col.lower():
+                        df = df.rename(columns={col: 'esi'})
                         break
             
             success_count = 0
@@ -1057,6 +1072,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                     
                     # Extract optional fields
                     phone_number = str(row.get('phone_number', '')).strip() or None
+                    father_name = str(row.get('father_name', '')).strip() or None
                     
                     # Parse date of birth
                     date_of_birth = None
@@ -1098,6 +1114,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                     
                     # Extract worker-specific fields
                     uan_number = str(row.get('uan_number', '')).strip() or None
+                    esi = str(row.get('esi', '')).strip() or None
                     department = str(row.get('department', '')).strip() or None
                     
                     # Extract project (by project name or ID)
@@ -1124,7 +1141,6 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                     bank_name = str(row.get('bank_name', '')).strip() or None
                     account_number = str(row.get('account_number', '')).strip() or None
                     ifsc_code = str(row.get('ifsc_code', '')).strip() or None
-                    bank_branch = str(row.get('bank_branch', '')).strip() or None
                     
                     # Create contract worker
                     with transaction.atomic():
@@ -1148,6 +1164,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                             user=user,
                             date_of_birth=date_of_birth,
                             gender=gender,
+                            father_name=father_name,
                             address=address,
                             city=city,
                             state=state,
@@ -1163,7 +1180,6 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                                 bank_name=bank_name,
                                 account_number=account_number,
                                 ifsc_code=ifsc_code,
-                                branch=bank_branch,
                                 created_by=request.user
                             )
                         
@@ -1175,6 +1191,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                             monthly_salary=monthly_salary,
                             aadhar_no=aadhar_no,
                             uan_number=uan_number,
+                            esi=esi,
                             department=department,
                             created_by=request.user
                         )
@@ -1214,6 +1231,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         - Sr. No. (optional, for reference)
         - First Name (required)
         - Last Name (required)
+        - Father Name (optional)
         - Email (required)
         - Phone Number (optional)
         - Date Of Birth (dd/mm/yy format) (optional)
@@ -1227,11 +1245,11 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
         - Salary (monthly salary) (required)
         - Aadhar Number (required)
         - UAN Number (optional)
+        - ESI (optional)
         - Department (optional)
         - Bank Name (optional)
         - Account Number (optional)
         - IFSC Code (optional)
-        - Bank Branch (optional)
         - Project (optional) - Project name or ID
         
         **Use Case:**
@@ -1254,6 +1272,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'Sr. No.',
                 'First Name',
                 'Last Name',
+                'Father Name',
                 'Email',
                 'Phone Number',
                 'Date Of Birth (dd/mm/yy)',
@@ -1267,11 +1286,11 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'Salary',
                 'Aadhar Number',
                 'UAN Number',
+                'ESI',
                 'Department',
                 'Bank Name',
                 'Account Number',
                 'IFSC Code',
-                'Bank Branch',
                 'Project'
             ]
             
@@ -1280,6 +1299,7 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'Sr. No.': [1],
                 'First Name': ['John'],
                 'Last Name': ['Doe'],
+                'Father Name': ['John Doe Sr.'],
                 'Email': ['john.doe@example.com'],
                 'Phone Number': ['9876543210'],
                 'Date Of Birth (dd/mm/yy)': ['01/01/1990'],
@@ -1293,11 +1313,11 @@ class ContractWorkerViewSet(viewsets.ModelViewSet):
                 'Salary': [25000],
                 'Aadhar Number': ['123456789012'],
                 'UAN Number': ['123456789012'],
+                'ESI': ['ESI123456789'],
                 'Department': ['Construction'],
                 'Bank Name': ['State Bank of India'],
                 'Account Number': ['1234567890123456'],
                 'IFSC Code': ['SBIN0001234'],
-                'Bank Branch': ['Mumbai Main Branch'],
                 'Project': ['']
             }
             

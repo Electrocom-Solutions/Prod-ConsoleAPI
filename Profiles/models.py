@@ -7,6 +7,7 @@ class Profile(models.Model):
     photo = models.ImageField(upload_to="profiles/photos/", blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
     gender = models.CharField(max_length=20, blank=True, null=True)
+    father_name = models.CharField(max_length=100, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
     state = models.CharField(max_length=100, blank=True, null=True)

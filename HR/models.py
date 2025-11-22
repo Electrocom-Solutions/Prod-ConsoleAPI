@@ -36,6 +36,7 @@ class ContractWorker(models.Model):
     monthly_salary = models.DecimalField(max_digits=12, decimal_places=2)
     aadhar_no = models.CharField(max_length=20)
     uan_number = models.CharField(max_length=20, blank=True, null=True)
+    esi = models.CharField(max_length=50, blank=True, null=True)
     department = models.CharField(max_length=100, blank=True, null=True)
 
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="contractworkers_created", blank=True, null=True)

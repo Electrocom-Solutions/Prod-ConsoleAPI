@@ -612,6 +612,7 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
     # Profile/User fields
     first_name = serializers.CharField(write_only=True, required=True)
     last_name = serializers.CharField(write_only=True, required=True)
+    father_name = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     email = serializers.EmailField(write_only=True, required=True)
     phone_number = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     date_of_birth = serializers.DateField(write_only=True, required=False, allow_null=True)
@@ -626,23 +627,23 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
     bank_name = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     bank_account_number = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     ifsc_code = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
-    bank_branch = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
     
     # ContractWorker fields
     worker_type = serializers.ChoiceField(choices=ContractWorker.WorkerType.choices, required=True)
     monthly_salary = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
     aadhar_no = serializers.CharField(required=True)
     uan_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    esi = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     department = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = ContractWorker
         fields = [
-            'id', 'first_name', 'last_name', 'email', 'phone_number',
+            'id', 'first_name', 'last_name', 'father_name', 'email', 'phone_number',
             'date_of_birth', 'gender', 'address', 'city', 'state',
             'pin_code', 'country', 'worker_type', 'monthly_salary',
-            'aadhar_no', 'uan_number', 'department', 'project',
-            'bank_name', 'bank_account_number', 'ifsc_code', 'bank_branch'
+            'aadhar_no', 'uan_number', 'esi', 'department', 'project',
+            'bank_name', 'bank_account_number', 'ifsc_code'
         ]
         read_only_fields = ['id']
     
@@ -662,6 +663,7 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
         # Extract profile/user fields
         first_name = validated_data.pop('first_name')
         last_name = validated_data.pop('last_name')
+        father_name = validated_data.pop('father_name', None)
         email = validated_data.pop('email')
         phone_number = validated_data.pop('phone_number', None)
         date_of_birth = validated_data.pop('date_of_birth', None)
@@ -676,13 +678,13 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
         bank_name = validated_data.pop('bank_name', None)
         bank_account_number = validated_data.pop('bank_account_number', None)
         ifsc_code = validated_data.pop('ifsc_code', None)
-        bank_branch = validated_data.pop('bank_branch', None)
         
         # Extract contract worker fields
         worker_type = validated_data.pop('worker_type')
         monthly_salary = validated_data.pop('monthly_salary')
         aadhar_no = validated_data.pop('aadhar_no')
         uan_number = validated_data.pop('uan_number', None)
+        esi = validated_data.pop('esi', None)
         department = validated_data.pop('department', None)
         project = validated_data.pop('project', None)
         
@@ -707,6 +709,7 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
                 user=user,
                 date_of_birth=date_of_birth,
                 gender=gender,
+                father_name=father_name,
                 address=address,
                 city=city,
                 state=state,
@@ -722,7 +725,6 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
                     bank_name=bank_name,
                     account_number=bank_account_number,
                     ifsc_code=ifsc_code,
-                    branch=bank_branch,
                     created_by=self.context['request'].user
                 )
             
@@ -734,6 +736,7 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
                 monthly_salary=monthly_salary,
                 aadhar_no=aadhar_no,
                 uan_number=uan_number,
+                esi=esi,
                 department=department,
                 created_by=self.context['request'].user
             )
@@ -746,6 +749,7 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
         # Extract profile/user fields
         first_name = validated_data.pop('first_name', None)
         last_name = validated_data.pop('last_name', None)
+        father_name = validated_data.pop('father_name', None)
         email = validated_data.pop('email', None)
         phone_number = validated_data.pop('phone_number', None)
         date_of_birth = validated_data.pop('date_of_birth', None)
@@ -760,7 +764,9 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
         bank_name = validated_data.pop('bank_name', None)
         bank_account_number = validated_data.pop('bank_account_number', None)
         ifsc_code = validated_data.pop('ifsc_code', None)
-        bank_branch = validated_data.pop('bank_branch', None)
+        
+        # Extract contract worker fields
+        esi = validated_data.pop('esi', None)
         
         with transaction.atomic():
             # Update user
@@ -781,6 +787,8 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
                     profile.date_of_birth = date_of_birth
                 if gender is not None:
                     profile.gender = gender
+                if father_name is not None:
+                    profile.father_name = father_name
                 if address is not None:
                     profile.address = address
                 if city is not None:
@@ -802,7 +810,6 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
                             'bank_name': bank_name,
                             'account_number': bank_account_number,
                             'ifsc_code': ifsc_code,
-                            'branch': bank_branch,
                             'created_by': self.context['request'].user
                         }
                     )
@@ -810,12 +817,13 @@ class ContractWorkerCreateSerializer(serializers.ModelSerializer):
                         bank_account.bank_name = bank_name
                         bank_account.account_number = bank_account_number
                         bank_account.ifsc_code = ifsc_code
-                        bank_account.branch = bank_branch
                         user = self.context['request'].user
                         bank_account.updated_by = user if user.is_authenticated else None
                         bank_account.save()
             
             # Update contract worker
+            if esi is not None:
+                instance.esi = esi
             user = self.context['request'].user
             validated_data['updated_by'] = user if user.is_authenticated else None
             return super().update(instance, validated_data)
