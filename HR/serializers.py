@@ -534,6 +534,7 @@ class ContractWorkerDetailSerializer(serializers.ModelSerializer):
     phone_number = serializers.SerializerMethodField()
     date_of_birth = serializers.SerializerMethodField()
     gender = serializers.SerializerMethodField()
+    father_name = serializers.SerializerMethodField()
     address = serializers.SerializerMethodField()
     city = serializers.SerializerMethodField()
     state = serializers.SerializerMethodField()
@@ -546,8 +547,8 @@ class ContractWorkerDetailSerializer(serializers.ModelSerializer):
         model = ContractWorker
         fields = [
             'id', 'full_name', 'email', 'phone_number', 'date_of_birth', 'gender',
-            'address', 'city', 'state', 'pin_code', 'country', 'worker_type',
-            'monthly_salary', 'aadhar_no', 'uan_number', 'department',
+            'father_name', 'address', 'city', 'state', 'pin_code', 'country', 'worker_type',
+            'monthly_salary', 'aadhar_no', 'uan_number', 'esi', 'department',
             'project', 'project_name', 'bank_account', 'profile',
             'created_at', 'updated_at', 'created_by', 'updated_by'
         ]
@@ -598,6 +599,10 @@ class ContractWorkerDetailSerializer(serializers.ModelSerializer):
     def get_country(self, obj):
         """Get country from profile"""
         return obj.profile.country if obj.profile else None
+    
+    def get_father_name(self, obj):
+        """Get father name from profile"""
+        return obj.profile.father_name if obj.profile else None
     
     def get_bank_account(self, obj):
         """Get bank account details"""
