@@ -225,6 +225,21 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
     
+    def validate_phone_number(self, value):
+        """Validate phone number is exactly 10 digits"""
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        
+        # Remove all non-digit characters
+        digits_only = ''.join(filter(str.isdigit, str(value)))
+        
+        if len(digits_only) != 10:
+            raise serializers.ValidationError(
+                "Mobile number must be exactly 10 digits. Please enter a 10-digit mobile number (e.g., 9983172626)."
+            )
+        
+        return digits_only
+    
     def create(self, validated_data):
         from django.db import transaction
         
@@ -233,6 +248,8 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         last_name = validated_data.pop('last_name')
         email = validated_data.pop('email')
         phone_number = validated_data.pop('phone_number')
+        # phone_number is already cleaned by validate_phone_number (10 digits)
+        phone_number_cleaned = phone_number
         photo = validated_data.pop('photo', None)
         date_of_birth = validated_data.pop('date_of_birth', None)
         gender = validated_data.pop('gender', None)
@@ -319,8 +336,7 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             )
             
             # Create mobile number if provided
-            if phone_number:
-                phone_number_cleaned = str(phone_number).strip()
+            if phone_number_cleaned:
                 if phone_number_cleaned:
                     # Check if mobile number already exists for another user
                     existing_mobile = MobileNumber.objects.filter(mobile_number=phone_number_cleaned).first()
@@ -356,6 +372,84 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
                             raise serializers.ValidationError({
                                 'phone_number': f'Failed to save mobile number: {str(e)}'
                             })
+            
+            # Send email with login credentials
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+                import logging
+                logger = logging.getLogger(__name__)
+                
+                from_email = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
+                
+                subject = f"Welcome to Electrocom ERP - Your Login Credentials"
+                
+                html_message = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <div style="background-color: #0ea5e9; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0;">
+                            <h1 style="margin: 0;">Welcome to Electrocom ERP</h1>
+                        </div>
+                        <div style="background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
+                            <p>Dear {first_name} {last_name},</p>
+                            <p>Your account has been created successfully. Please find your login credentials below:</p>
+                            
+                            <div style="background-color: white; padding: 20px; border-radius: 5px; margin: 20px 0; border: 2px solid #0ea5e9;">
+                                <h3 style="margin-top: 0; color: #0ea5e9;">Login Credentials</h3>
+                                <p><strong>Email:</strong> {email}</p>
+                                <p><strong>Mobile Number:</strong> {phone_number_cleaned}</p>
+                                <p><strong>Password:</strong> {phone_number_cleaned}</p>
+                                <p style="color: #dc2626; font-weight: bold;">⚠️ Please change your password after first login for security.</p>
+                            </div>
+                            
+                            <p>You can now log in to the mobile app using your mobile number and password.</p>
+                            
+                            <p>If you have any questions or need assistance, please contact the administrator.</p>
+                            
+                            <p>Best regards,<br>Electrocom Team</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                
+                plain_message = f"""
+Welcome to Electrocom ERP
+
+Dear {first_name} {last_name},
+
+Your account has been created successfully. Please find your login credentials below:
+
+Email: {email}
+Mobile Number: {phone_number_cleaned}
+Password: {phone_number_cleaned}
+
+⚠️ Please change your password after first login for security.
+
+You can now log in to the mobile app using your mobile number and password.
+
+If you have any questions or need assistance, please contact the administrator.
+
+Best regards,
+Electrocom Team
+                """
+                
+                send_mail(
+                    subject=subject,
+                    message=plain_message,
+                    from_email=from_email,
+                    recipient_list=[email],
+                    html_message=html_message,
+                    fail_silently=False,
+                )
+                
+                logger.info(f"✅ Login credentials email sent successfully to {email} for employee {employee_code}")
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ Error sending login credentials email to {email}: {str(e)}", exc_info=True)
+                # Don't fail employee creation if email fails
             
             return employee
     

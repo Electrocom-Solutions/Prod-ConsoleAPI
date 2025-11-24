@@ -915,3 +915,107 @@ def send_scheduled_email(self, template_id, recipients, placeholder_values=None)
         logger.error(f"Error in send_scheduled_email task: {str(e)}", exc_info=True)
         raise
 
+
+@shared_task(bind=True, name='Scheduler.tasks.mark_absent_employees')
+def mark_absent_employees(self):
+    """
+    Mark employees as absent who didn't mark attendance for the day.
+    
+    This task runs daily around 11:30-11:50 PM (Asia/Kolkata) and marks
+    employees who didn't mark attendance as "Absent" (except on Sundays).
+    
+    The task:
+    1. Checks if today is Sunday (skip if it is)
+    2. Gets all active employees
+    3. For each employee, checks if they have attendance for today
+    4. If no attendance record exists, creates an "Absent" attendance record
+    """
+    try:
+        from django.utils import timezone as tz
+        import pytz
+        from HR.models import Employee, Attendance
+        
+        kolkata_tz = pytz.timezone('Asia/Kolkata')
+        now = tz.now().astimezone(kolkata_tz)
+        today = now.date()
+        
+        # Skip if today is Sunday (weekday 6)
+        if today.weekday() == 6:  # Sunday
+            logger.info(f"Today ({today}) is Sunday. Skipping absent marking.")
+            return {
+                'status': 'skipped',
+                'reason': 'Sunday - no attendance marking required',
+                'date': str(today)
+            }
+        
+        logger.info(f"Starting absent marking for employees on {today}")
+        
+        # Get system user for created_by field
+        system_user = User.objects.filter(is_superuser=True).first()
+        if not system_user:
+            logger.warning("No superuser found. Attendance records will have null created_by.")
+        
+        # Get all active employees
+        employees = Employee.objects.select_related('profile', 'profile__user').all()
+        
+        if not employees.exists():
+            logger.warning("No employees found. Skipping absent marking.")
+            return {
+                'status': 'skipped',
+                'reason': 'No employees found',
+                'date': str(today)
+            }
+        
+        marked_absent_count = 0
+        already_marked_count = 0
+        errors = []
+        
+        with transaction.atomic():
+            for employee in employees:
+                try:
+                    # Check if attendance record already exists for today
+                    existing_attendance = Attendance.objects.filter(
+                        employee=employee,
+                        attendance_date=today
+                    ).first()
+                    
+                    if existing_attendance:
+                        already_marked_count += 1
+                        logger.debug(f"Employee {employee.employee_code} already has attendance for {today}")
+                        continue
+                    
+                    # Create absent attendance record
+                    Attendance.objects.create(
+                        employee=employee,
+                        attendance_date=today,
+                        attendance_status=Attendance.AttendanceStatus.ABSENT,
+                        approval_status=Attendance.ApprovalStatus.APPROVED,  # Auto-approved for system-generated absences
+                        notes=f'Auto-marked as absent - no attendance recorded for {today}',
+                        created_by=system_user
+                    )
+                    
+                    marked_absent_count += 1
+                    logger.info(f"Marked employee {employee.employee_code} as absent for {today}")
+                    
+                except Exception as e:
+                    error_msg = f"Error marking absent for employee {employee.employee_code}: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(error_msg, exc_info=True)
+                    continue
+        
+        result = {
+            'status': 'success',
+            'date': str(today),
+            'marked_absent_count': marked_absent_count,
+            'already_marked_count': already_marked_count,
+            'total_employees': employees.count(),
+            'errors': errors if errors else None
+        }
+        
+        logger.info(f"Absent marking completed: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in mark_absent_employees task: {str(e)}", exc_info=True)
+        raise
+
