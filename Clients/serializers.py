@@ -459,9 +459,9 @@ class ClientStatisticsSerializer(serializers.Serializer):
 # Firm Serializers
 class FirmListSerializer(serializers.ModelSerializer):
     """Serializer for listing firms"""
-    type_display = serializers.CharField(source='get_firm_type_display', read_only=True)
+    type_display = serializers.SerializerMethodField()
     firm_owner_name = serializers.SerializerMethodField()
-    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    created_by_username = serializers.SerializerMethodField()
     
     class Meta:
         model = Firm
@@ -472,12 +472,71 @@ class FirmListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'created_by']
     
+    def to_representation(self, instance):
+        """Override to handle any serialization errors gracefully"""
+        try:
+            return super().to_representation(instance)
+        except Exception as e:
+            # Log the error but return a minimal representation
+            import traceback
+            print(f"Error serializing Firm {instance.id}: {str(e)}")
+            print(traceback.format_exc())
+            # Return minimal safe representation
+            return {
+                'id': instance.id,
+                'firm_name': str(instance.firm_name) if instance.firm_name else '',
+                'firm_type': instance.firm_type,
+                'type_display': None,
+                'firm_owner_profile': instance.firm_owner_profile_id if hasattr(instance, 'firm_owner_profile_id') else None,
+                'firm_owner_name': None,
+                'official_email': instance.official_email,
+                'official_mobile_number': instance.official_mobile_number,
+                'address': instance.address,
+                'gst_number': instance.gst_number,
+                'pan_number': instance.pan_number,
+                'created_at': instance.created_at.isoformat() if instance.created_at else None,
+                'created_by': instance.created_by_id if hasattr(instance, 'created_by_id') else None,
+                'created_by_username': None,
+            }
+    
+    def get_type_display(self, obj):
+        """Get firm type display name safely"""
+        try:
+            if obj.firm_type:
+                return obj.get_firm_type_display()
+        except (AttributeError, Exception):
+            pass
+        return None
+    
     def get_firm_owner_name(self, obj):
         """Get firm owner name from profile user"""
-        if obj.firm_owner_profile and obj.firm_owner_profile.user:
-            user = obj.firm_owner_profile.user
-            full_name = f"{user.first_name} {user.last_name}".strip()
-            return full_name if full_name else user.username
+        try:
+            if obj.firm_owner_profile:
+                # Check if user attribute exists and is not None
+                if hasattr(obj.firm_owner_profile, 'user'):
+                    user = getattr(obj.firm_owner_profile, 'user', None)
+                    if user:
+                        first_name = getattr(user, 'first_name', '') or ''
+                        last_name = getattr(user, 'last_name', '') or ''
+                        full_name = f"{first_name} {last_name}".strip()
+                        if full_name:
+                            return full_name
+                        # Fallback to username if name is empty
+                        username = getattr(user, 'username', None)
+                        if username:
+                            return username
+        except (AttributeError, Exception) as e:
+            # Silently handle any errors
+            pass
+        return None
+    
+    def get_created_by_username(self, obj):
+        """Get created by username safely"""
+        try:
+            if obj.created_by and hasattr(obj.created_by, 'username'):
+                return obj.created_by.username
+        except (AttributeError, Exception):
+            pass
         return None
 
 

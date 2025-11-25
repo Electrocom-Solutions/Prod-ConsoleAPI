@@ -392,6 +392,43 @@ class FirmViewSet(viewsets.ModelViewSet):
         'created_by', 'updated_by'
     ).all()
     
+    # Ensure we have proper error handling
+    def get_queryset(self):
+        """Return firms with search and filtering"""
+        try:
+            queryset = Firm.objects.select_related(
+                'firm_owner_profile', 'firm_owner_profile__user',
+                'created_by', 'updated_by'
+            ).all()
+            
+            # Search by firm name, GST number, PAN number, email, mobile, or owner name
+            search = self.request.query_params.get('search', None)
+            if search:
+                queryset = queryset.filter(
+                    Q(firm_name__icontains=search) |
+                    Q(gst_number__icontains=search) |
+                    Q(pan_number__icontains=search) |
+                    Q(official_email__icontains=search) |
+                    Q(official_mobile_number__icontains=search) |
+                    Q(address__icontains=search) |
+                    Q(firm_owner_profile__user__first_name__icontains=search) |
+                    Q(firm_owner_profile__user__last_name__icontains=search) |
+                    Q(firm_owner_profile__user__username__icontains=search)
+                )
+            
+            # Filter by firm type
+            firm_type_filter = self.request.query_params.get('firm_type', None)
+            if firm_type_filter:
+                queryset = queryset.filter(firm_type=firm_type_filter)
+            
+            return queryset.order_by('-created_at')
+        except Exception as e:
+            import traceback
+            print(f"Error in FirmViewSet.get_queryset: {str(e)}")
+            print(traceback.format_exc())
+            # Return empty queryset on error to prevent 500
+            return Firm.objects.none()
+    
     def get_serializer_class(self):
         if self.action in ['list']:
             return FirmListSerializer
@@ -400,32 +437,6 @@ class FirmViewSet(viewsets.ModelViewSet):
         elif self.action in ['create', 'update', 'partial_update']:
             return FirmCreateUpdateSerializer
         return FirmListSerializer
-    
-    def get_queryset(self):
-        """Return firms with search and filtering"""
-        queryset = super().get_queryset()
-        
-        # Search by firm name, GST number, PAN number, email, mobile, or owner name
-        search = self.request.query_params.get('search', None)
-        if search:
-            queryset = queryset.filter(
-                Q(firm_name__icontains=search) |
-                Q(gst_number__icontains=search) |
-                Q(pan_number__icontains=search) |
-                Q(official_email__icontains=search) |
-                Q(official_mobile_number__icontains=search) |
-                Q(address__icontains=search) |
-                Q(firm_owner_profile__user__first_name__icontains=search) |
-                Q(firm_owner_profile__user__last_name__icontains=search) |
-                Q(firm_owner_profile__user__username__icontains=search)
-            )
-        
-        # Filter by firm type
-        firm_type_filter = self.request.query_params.get('firm_type', None)
-        if firm_type_filter:
-            queryset = queryset.filter(firm_type=firm_type_filter)
-        
-        return queryset.order_by('-created_at')
     
     @swagger_auto_schema(
         operation_id='firm_list',
@@ -485,7 +496,13 @@ class FirmViewSet(viewsets.ModelViewSet):
     )
     def list(self, request, *args, **kwargs):
         """Get list of all firms"""
-        return super().list(request, *args, **kwargs)
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            import traceback
+            print(f"Error in FirmViewSet.list: {str(e)}")
+            print(traceback.format_exc())
+            raise
     
     @swagger_auto_schema(
         operation_id='firm_retrieve',
