@@ -191,19 +191,19 @@ JAZZMIN_SETTINGS = {
     "site_brand": "Electrocom",
 
     # Logo to use for your site, must be present in static files, used for brand on top left
-    "site_logo": None,
+    "site_logo": "admin/logos/logo only.png",
 
     # Logo to use for your site, must be present in static files, used for login form logo
-    "login_logo": None,
+    "login_logo": "admin/logos/logo only.png",
 
     # Logo to use for login form in dark themes
-    "login_logo_dark": None,
+    "login_logo_dark": "admin/logos/logo only.png",
 
     # CSS classes that are applied to the logo above
-    "site_logo_classes": "img-circle",
+    "site_logo_classes": "img-fluid",
 
     # Relative path to a favicon for your site, will default to site_logo if absent (ideally 32x32 px)
-    "site_icon": None,
+    "site_icon": "admin/favicon/favicon-32x32.png",
 
     # Welcome text on the login screen
     "welcome_sign": "Welcome to Electrocom Admin Panel",
@@ -361,7 +361,7 @@ JAZZMIN_SETTINGS = {
     # UI Tweaks #
     #############
     # Relative paths to custom CSS/JS scripts (must be present in static files)
-    "custom_css": None,
+    "custom_css": "admin/css/custom.css",
     "custom_js": None,
     # Whether to link font from fonts.googleapis.com (use custom_css to supply font otherwise)
     "use_google_fonts_cdn": True,
