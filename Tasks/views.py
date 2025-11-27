@@ -107,11 +107,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         start_date, end_date = self._get_date_range(date_filter)
         if date_filter != 'all' and start_date and end_date:
             queryset = queryset.filter(
-                task_date__gte=start_date,
-                task_date__lte=end_date
+                deadline__gte=start_date,
+                deadline__lte=end_date
             )
         
-        return queryset.order_by('-task_date', '-created_at')
+        return queryset.order_by('-deadline', '-created_at')
     
     @swagger_auto_schema(
         operation_id='task_statistics',
@@ -128,9 +128,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         **Date Filtering Options:**
         The statistics can be filtered by date range using the `filter` query parameter:
-        - `today`: Statistics for tasks with task_date = today
-        - `this_week`: Statistics for tasks with task_date within the current week (Monday to Sunday)
-        - `this_month`: Statistics for tasks with task_date within the current month
+        - `today`: Statistics for tasks with deadline = today
+        - `this_week`: Statistics for tasks with deadline within the current week (Monday to Sunday)
+        - `this_month`: Statistics for tasks with deadline within the current month
         - `all`: Statistics for all tasks in the system (no date filter) - this is the default
         
         **Query Parameters:**
@@ -196,8 +196,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         # Apply date filter if not 'all'
         if filter_type != 'all' and start_date and end_date:
             tasks_queryset = tasks_queryset.filter(
-                task_date__gte=start_date,
-                task_date__lte=end_date
+                deadline__gte=start_date,
+                deadline__lte=end_date
             )
         
         # Calculate statistics
@@ -313,9 +313,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         - project: Filter by project ID
         - status: Filter by task status (Draft, In Progress, Completed, Canceled)
         - date_filter: Filter by date range (today, this_week, this_month, all)
-          * today: Tasks with task_date = today
-          * this_week: Tasks with task_date within the current week (Monday to Sunday)
-          * this_month: Tasks with task_date within the current month
+          * today: Tasks with deadline = today
+          * this_week: Tasks with deadline within the current week (Monday to Sunday)
+          * this_month: Tasks with deadline within the current month
           * all: All tasks (no date filter) - this is the default
         
         **Query Parameters:**
@@ -1412,8 +1412,8 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
                 first_day = date(year, month, 1)
                 last_day = date(year, month, monthrange(year, month)[1])
                 queryset = queryset.filter(
-                    task_date__gte=first_day,
-                    task_date__lte=last_day
+                    deadline__gte=first_day,
+                    deadline__lte=last_day
                 )
             except (ValueError, TypeError) as e:
                 import logging
@@ -1434,7 +1434,7 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(project__tender__reference_number__icontains=search)
             )
         
-        return queryset.order_by('-task_date', '-created_at')
+        return queryset.order_by('-deadline', '-created_at')
     
     @swagger_auto_schema(
         operation_id='task_resources_statistics',
@@ -1509,8 +1509,8 @@ class TaskResourcesDashboardViewSet(viewsets.ReadOnlyModelViewSet):
             first_day = date(year, month, 1)
             last_day = date(year, month, monthrange(year, month)[1])
             tasks_queryset = tasks_queryset.filter(
-                task_date__gte=first_day,
-                task_date__lte=last_day
+                deadline__gte=first_day,
+                deadline__lte=last_day
             )
         
         # Get task IDs

@@ -59,7 +59,7 @@ class TaskListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            'id', 'task_name', 'task_date', 'location', 'time_taken_minutes',
+            'id', 'task_name', 'deadline', 'location', 'time_taken_minutes',
             'time_taken_hours', 'status', 'approval_status', 'employee', 'employee_name',
             'project', 'project_name', 'tender_name', 'created_at'
         ]
@@ -94,7 +94,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            'id', 'task_name', 'task_description', 'task_date', 'location',
+            'id', 'task_name', 'task_description', 'deadline', 'location',
             'time_taken_minutes', 'time_taken_hours', 'status', 'approval_status', 'internal_notes',
             'employee', 'employee_name', 'project', 'project_name', 'tender_name',
             'attachments', 'resources', 'activity_feed',
@@ -145,7 +145,7 @@ class BulkApproveSerializer(serializers.Serializer):
 
 class TaskCreateSerializer(serializers.ModelSerializer):
     estimated_time = serializers.IntegerField(source='time_taken_minutes', required=False, allow_null=True, help_text='Estimated time in minutes')
-    deadline = serializers.DateField(source='task_date', help_text='Task deadline/date')
+    deadline = serializers.DateField(source='deadline', required=False, allow_null=True, help_text='Task deadline/date (optional, informational only)')
     
     class Meta:
         model = Task
@@ -220,7 +220,7 @@ class TaskResourcesDashboardSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'task_name', 'employee', 'employee_name', 'project', 'project_name',
-            'tender_name', 'task_date', 'resources_count', 'grand_total', 'resource_breakdown'
+            'tender_name', 'deadline', 'resources_count', 'grand_total', 'resource_breakdown'
         ]
         read_only_fields = ['id']
     

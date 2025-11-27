@@ -18,7 +18,7 @@ class Task(models.Model):
     project = models.ForeignKey("Projects.Project", on_delete=models.CASCADE, related_name="tasks")
     task_name = models.CharField(max_length=255)
     task_description = models.TextField(blank=True, null=True)
-    task_date = models.DateField()
+    deadline = models.DateField(null=True, blank=True, help_text="Task deadline (optional, informational only)")
     location = models.CharField(max_length=255, blank=True, null=True)
     time_taken_minutes = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
