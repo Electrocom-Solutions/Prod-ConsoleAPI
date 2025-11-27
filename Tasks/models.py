@@ -22,14 +22,9 @@ class Task(models.Model):
     location = models.CharField(max_length=255, blank=True, null=True)
     time_taken_minutes = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    approval_status = models.CharField(max_length=20, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING, help_text="Task approval status: pending, approved, or rejected")
     internal_notes = models.TextField(blank=True, null=True)
-    approval_status = models.CharField(
-        max_length=20,
-        choices=ApprovalStatus.choices,
-        default=ApprovalStatus.PENDING,
-        help_text="Task approval status: pending, approved, or rejected"
-    )
-
+    
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="tasks_created", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="tasks_updated", blank=True, null=True)
