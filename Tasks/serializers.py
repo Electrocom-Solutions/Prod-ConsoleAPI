@@ -145,7 +145,7 @@ class BulkApproveSerializer(serializers.Serializer):
 
 class TaskCreateSerializer(serializers.ModelSerializer):
     estimated_time = serializers.IntegerField(source='time_taken_minutes', required=False, allow_null=True, help_text='Estimated time in minutes')
-    deadline = serializers.DateField(source='deadline', required=False, allow_null=True, help_text='Task deadline/date (optional, informational only)')
+    deadline = serializers.DateField(required=False, allow_null=True, help_text='Task deadline/date (optional, informational only)')
     
     class Meta:
         model = Task
@@ -158,11 +158,22 @@ class TaskCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['created_by'] = user if user.is_authenticated else None
+        
+        # Remove deadline from validated_data if it's None (to avoid setting it explicitly)
+        # This allows the database default/null handling to work properly
+        if 'deadline' in validated_data and validated_data['deadline'] is None:
+            validated_data.pop('deadline', None)
+        
         return super().create(validated_data)
     
     def update(self, instance, validated_data):
         user = self.context['request'].user
         validated_data['updated_by'] = user if user.is_authenticated else None
+        
+        # Remove deadline from validated_data if it's None (to avoid setting it explicitly)
+        if 'deadline' in validated_data and validated_data['deadline'] is None:
+            validated_data.pop('deadline', None)
+        
         return super().update(instance, validated_data)
 
 

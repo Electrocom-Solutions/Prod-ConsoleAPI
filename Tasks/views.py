@@ -559,7 +559,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         **Required Fields:**
         - project: ID of the project associated with this task
-        - deadline: Task deadline/date (YYYY-MM-DD) - this maps to task_date
+        - deadline: Task deadline/date (YYYY-MM-DD) - optional field
         - task_name: Name of the task
         
         **Optional Fields:**
