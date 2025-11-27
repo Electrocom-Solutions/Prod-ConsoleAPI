@@ -91,38 +91,52 @@ def send_fcm_push_notification(user, title, message, notification_type, notifica
             if device_tokens:
                 logger.info(f"First token (first 50 chars): {list(device_tokens)[0][:50]}...")
             
-            # Try send_all first (more compatible)
-            if hasattr(messaging, 'send_all'):
-                response = messaging.send_all(messages)
-                success_count = response.success_count
-                failure_count = response.failure_count
-                
-                # Handle invalid tokens
-                if failure_count > 0:
-                    invalid_tokens = []
-                    for idx, result in enumerate(response.responses):
-                        if not result.success:
-                            invalid_tokens.append(list(device_tokens)[idx])
-                            logger.warning(f"Failed to send to token: {result.exception}")
+            # Try send_all first, but fall back to individual sends if it fails
+            success_count = 0
+            invalid_tokens = []
+            
+            if hasattr(messaging, 'send_all') and len(messages) > 1:
+                try:
+                    response = messaging.send_all(messages)
+                    success_count = response.success_count
+                    failure_count = response.failure_count
                     
-                    # Mark invalid tokens as inactive
-                    if invalid_tokens:
-                        DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
+                    # Handle invalid tokens
+                    if failure_count > 0:
+                        for idx, result in enumerate(response.responses):
+                            if not result.success:
+                                invalid_tokens.append(list(device_tokens)[idx])
+                                error_type = type(result.exception).__name__ if result.exception else "Unknown"
+                                logger.warning(f"Failed to send to token: {error_type} - {str(result.exception)}")
+                except Exception as batch_error:
+                    # If send_all fails (e.g., 404 on /batch), fall back to individual sends
+                    logger.warning(f"send_all() failed: {str(batch_error)}. Falling back to individual sends.")
+                    logger.warning(f"Error type: {type(batch_error).__name__}")
+                    success_count = 0
+                    invalid_tokens = []
+                    for idx, fcm_msg in enumerate(messages):
+                        try:
+                            messaging.send(fcm_msg)
+                            success_count += 1
+                        except Exception as e:
+                            invalid_tokens.append(list(device_tokens)[idx])
+                            error_type = type(e).__name__
+                            logger.warning(f"Failed to send to token: {error_type} - {str(e)}")
             else:
-                # Fallback: send individually
-                success_count = 0
-                invalid_tokens = []
+                # Fallback: send individually (for single messages or if send_all not available)
                 for idx, fcm_msg in enumerate(messages):
                     try:
                         messaging.send(fcm_msg)
                         success_count += 1
                     except Exception as e:
                         invalid_tokens.append(list(device_tokens)[idx])
-                        logger.warning(f"Failed to send to token: {e}")
-                
-                # Mark invalid tokens as inactive
-                if invalid_tokens:
-                    DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
+                        error_type = type(e).__name__
+                        logger.warning(f"Failed to send to token: {error_type} - {str(e)}")
+            
+            # Mark invalid tokens as inactive
+            if invalid_tokens:
+                DeviceToken.objects.filter(token__in=invalid_tokens).update(is_active=False)
+                logger.info(f"Marked {len(invalid_tokens)} invalid tokens as inactive")
             
             logger.info(f"Sent push notification to {success_count} devices for user {user.username}")
             return success_count
