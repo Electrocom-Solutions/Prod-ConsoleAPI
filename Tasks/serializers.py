@@ -143,6 +143,15 @@ class BulkApproveSerializer(serializers.Serializer):
     )
 
 
+class BulkDeleteSerializer(serializers.Serializer):
+    task_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True,
+        min_length=1,
+        help_text='List of task IDs to delete'
+    )
+
+
 class TaskCreateSerializer(serializers.ModelSerializer):
     estimated_time = serializers.IntegerField(source='time_taken_minutes', required=False, allow_null=True, help_text='Estimated time in minutes')
     deadline = serializers.DateField(required=False, allow_null=True, help_text='Task deadline/date (optional, informational only)')

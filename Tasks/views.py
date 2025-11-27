@@ -22,6 +22,7 @@ from .serializers import (
     TaskDetailSerializer,
     TaskCreateSerializer,
     BulkApproveSerializer,
+    BulkDeleteSerializer,
     TaskAttachmentUploadSerializer,
     TaskResourceCreateSerializer,
     TaskAttachmentSerializer,
@@ -548,6 +549,132 @@ class TaskViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Error approving tasks: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @swagger_auto_schema(
+        operation_id='task_bulk_delete',
+        operation_summary="Delete Multiple Tasks",
+        operation_description="""
+        Delete multiple tasks from the system. This action is permanent and cannot be undone.
+        
+        **What it does:**
+        - Accepts a list of task IDs
+        - Deletes all selected tasks
+        - Creates activity log entries for each deleted task
+        - Returns the number of tasks deleted and any errors
+        
+        **Request Body:**
+        ```json
+        {
+          "task_ids": [1, 2, 3, 4, 5]
+        }
+        ```
+        
+        **Warning:**
+        Deleting tasks will also delete all associated attachments and resources.
+        
+        **Response:**
+        Returns the number of tasks deleted and any errors encountered.
+        
+        **Use Case:**
+        Use this endpoint when users select multiple tasks and click "Delete" button to delete them all at once.
+        """,
+        tags=['Task Management'],
+        responses={
+            200: openapi.Response(
+                description="Tasks deleted successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'deleted_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of tasks deleted'),
+                        'skipped_count': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of tasks skipped (not found)'),
+                        'errors': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_STRING),
+                            description='List of errors encountered'
+                        )
+                    }
+                )
+            ),
+            400: openapi.Response(
+                description="Invalid request data",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
+    )
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Delete multiple tasks"""
+        serializer = BulkDeleteSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        task_ids = serializer.validated_data['task_ids']
+        
+        if not task_ids:
+            return Response(
+                {'error': 'At least one task ID is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                # Get all valid tasks
+                tasks_to_delete = Task.objects.filter(id__in=task_ids)
+                
+                deleted_count = 0
+                skipped_count = 0
+                errors = []
+                
+                # Store task names before deletion for activity logs
+                task_info = {task.id: task.task_name for task in tasks_to_delete}
+                
+                for task in tasks_to_delete:
+                    try:
+                        task_name = task_info[task.id]
+                        task_id = task.id
+                        
+                        # Create activity log before deletion
+                        ActivityLog.objects.create(
+                            entity_type=ActivityLog.EntityType.TASK,
+                            entity_id=task_id,
+                            action=ActivityLog.Action.DELETED,
+                            description=f"Task {task_name} deleted",
+                            created_by=request.user
+                        )
+                        
+                        # Delete the task (this will cascade delete attachments and resources)
+                        task.delete()
+                        deleted_count += 1
+                    except Exception as e:
+                        errors.append(f"Error deleting task {task.id}: {str(e)}")
+                
+                # Count skipped tasks (tasks that don't exist)
+                skipped_count = len(task_ids) - tasks_to_delete.count()
+                
+                # Check for invalid task IDs
+                valid_task_ids = set(tasks_to_delete.values_list('id', flat=True))
+                invalid_task_ids = set(task_ids) - valid_task_ids
+                
+                if invalid_task_ids:
+                    errors.append(f"Tasks not found: {', '.join(map(str, invalid_task_ids))}")
+                
+                return Response({
+                    'deleted_count': deleted_count,
+                    'skipped_count': skipped_count,
+                    'errors': errors if errors else None
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            return Response(
+                {'error': f'Error deleting tasks: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
