@@ -31,6 +31,7 @@ from .serializers import (
 )
 from Analytics.models import ActivityLog
 from Notifications.utils import send_notification_to_owners, send_notification_to_user
+from Notifications.models import Notification
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -723,6 +724,24 @@ class TaskViewSet(viewsets.ModelViewSet):
                 created_by=request.user
             )
         
+        # Notify employee when task is assigned to them
+        if task.employee and task.employee.profile and task.employee.profile.user:
+            assigned_user = task.employee.profile.user
+            # Only notify if the assigned employee is different from the creator
+            if assigned_user != request.user:
+                project_name = task.project.name if task.project else "a project"
+                deadline_text = ""
+                if task.deadline:
+                    deadline_text = f" (Deadline: {task.deadline.strftime('%B %d, %Y')})"
+                send_notification_to_user(
+                    user=assigned_user,
+                    title="New Task Assigned",
+                    message=f"You have been assigned a new task: {task.task_name} for project {project_name}{deadline_text}",
+                    notification_type="Task",
+                    channel=Notification.Channel.PUSH,  # Send push notification
+                    created_by=request.user
+                )
+        
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
@@ -751,6 +770,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         old_status = instance.status
+        old_employee = instance.employee  # Save old employee before update
+        
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -758,6 +779,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         # Refresh instance to get updated status
         instance.refresh_from_db()
         new_status = instance.status
+        new_employee = instance.employee  # Get new employee after update
         
         # When employee marks task as completed, ensure approval_status remains Pending
         if not request.user.is_superuser and old_status != Task.Status.COMPLETED and new_status == Task.Status.COMPLETED:
@@ -773,6 +795,24 @@ class TaskViewSet(viewsets.ModelViewSet):
                 notification_type="Task",
                 created_by=request.user
             )
+        
+        # Notify employee when task is assigned/reassigned to them
+        if new_employee and new_employee.profile and new_employee.profile.user:
+            assigned_user = new_employee.profile.user
+            # Only notify if employee changed and the assigned employee is different from the updater
+            if old_employee != new_employee and assigned_user != request.user:
+                project_name = instance.project.name if instance.project else "a project"
+                deadline_text = ""
+                if instance.deadline:
+                    deadline_text = f" (Deadline: {instance.deadline.strftime('%B %d, %Y')})"
+                send_notification_to_user(
+                    user=assigned_user,
+                    title="Task Assigned to You",
+                    message=f"You have been assigned task: {instance.task_name} for project {project_name}{deadline_text}",
+                    notification_type="Task",
+                    channel=Notification.Channel.PUSH,  # Send push notification
+                    created_by=request.user
+                )
         
         # Create activity log
         ActivityLog.objects.create(
