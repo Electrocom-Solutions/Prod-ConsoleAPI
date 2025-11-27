@@ -527,18 +527,10 @@ class TaskViewSet(viewsets.ModelViewSet):
                 # Count skipped tasks (tasks that don't exist or already approved)
                 skipped_count = len(task_ids) - tasks_to_approve.count()
                 
-                # Check for invalid task IDs
-                valid_task_ids = set(tasks_to_approve.values_list('id', flat=True))
-                invalid_task_ids = set(task_ids) - valid_task_ids
-                
-                if invalid_task_ids:
-                    # Check if they exist
-                    existing_tasks = Task.objects.filter(id__in=invalid_task_ids)
-                    existing_ids = set(existing_tasks.values_list('id', flat=True))
-                    non_existent_ids = invalid_task_ids - existing_ids
-                    
-                    if non_existent_ids:
-                        errors.append(f"Tasks not found: {', '.join(map(str, non_existent_ids))}")
+                # Note: We don't add "Tasks not found" to errors array because:
+                # 1. It's already represented by skipped_count
+                # 2. Missing tasks are expected (could be deleted by another user or stale selection)
+                # 3. Errors array should only contain actual errors (database errors, permission errors, etc.)
                 
                 return Response({
                     'approved_count': approved_count,
@@ -659,12 +651,10 @@ class TaskViewSet(viewsets.ModelViewSet):
                 # Count skipped tasks (tasks that don't exist)
                 skipped_count = len(task_ids) - tasks_to_delete.count()
                 
-                # Check for invalid task IDs
-                valid_task_ids = set(tasks_to_delete.values_list('id', flat=True))
-                invalid_task_ids = set(task_ids) - valid_task_ids
-                
-                if invalid_task_ids:
-                    errors.append(f"Tasks not found: {', '.join(map(str, invalid_task_ids))}")
+                # Note: We don't add "Tasks not found" to errors array because:
+                # 1. It's already represented by skipped_count
+                # 2. Missing tasks are expected (could be deleted by another user or stale selection)
+                # 3. Errors array should only contain actual errors (database errors, permission errors, etc.)
                 
                 return Response({
                     'deleted_count': deleted_count,
