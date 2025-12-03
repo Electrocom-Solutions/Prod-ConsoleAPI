@@ -1467,20 +1467,39 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         
         **What it returns:**
         - total_working_days: Total working days (default: 26)
-        - total_employees_present: Number of employees marked as "Present" today
-        - total_employees_absent: Number of employees marked as "Absent" today
+        - total_employees_present: Number of employees marked as "Present" on the selected date (or today if not provided)
+        - total_employees_absent: Number of employees marked as "Absent" on the selected date (or today if not provided)
         - total_pending_approvals: Number of attendance records with "Pending" approval status
+        
+        **Date Filtering:**
+        The statistics can be filtered by date using the `date` query parameter.
+        - If date is provided, statistics are calculated for that specific date
+        - If not provided, statistics default to today's date
         
         **Calculation:**
         - Total Working Days: Default value is 26 (can be configured)
-        - Total Employees Present: Count of employees with attendance record for today with status "Present"
-        - Total Employees Absent: Count of employees with attendance record for today with status "Absent"
+        - Total Employees Present: Count of employees with attendance record for the selected date with status "Present"
+        - Total Employees Absent: Count of employees with attendance record for the selected date with status "Absent"
         - Total Pending Approvals: Count of all attendance records with approval_status "Pending"
+        
+        **Query Parameters:**
+        - date (optional): Filter by specific date (YYYY-MM-DD). Defaults to today if not provided.
         
         **Use Case:**
         Use this endpoint to populate dashboard tiles showing key metrics for attendance management.
+        The date filter allows users to view statistics for different dates.
         """,
         tags=['Attendance Management'],
+        manual_parameters=[
+            openapi.Parameter(
+                'date',
+                openapi.IN_QUERY,
+                description='Filter by specific date (YYYY-MM-DD). Defaults to today if not provided.',
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE,
+                required=False
+            ),
+        ],
         responses={
             200: openapi.Response(
                 description="Attendance management statistics",
@@ -1488,8 +1507,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                     type=openapi.TYPE_OBJECT,
                     properties={
                         'total_working_days': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total working days (default: 26)'),
-                        'total_employees_present': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of employees present today'),
-                        'total_employees_absent': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of employees absent today'),
+                        'total_employees_present': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of employees present on the selected date'),
+                        'total_employees_absent': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of employees absent on the selected date'),
                         'total_pending_approvals': openapi.Schema(type=openapi.TYPE_INTEGER, description='Number of attendance records pending approval')
                     }
                 )
@@ -1499,24 +1518,32 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='statistics')
     def statistics(self, request):
         """Get attendance management statistics for dashboard"""
-        today = date.today()
+        # Get date filter from query parameters (default to today)
+        date_param = request.query_params.get('date', None)
+        if date_param:
+            try:
+                target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
+            except ValueError:
+                target_date = date.today()
+        else:
+            target_date = date.today()
         
         # Total working days (default: 26)
         total_working_days = 26
         
-        # Total employees present today
+        # Total employees present on the selected date
         total_employees_present = Attendance.objects.filter(
-            attendance_date=today,
+            attendance_date=target_date,
             attendance_status=Attendance.AttendanceStatus.PRESENT
         ).values('employee').distinct().count()
         
-        # Total employees absent today
+        # Total employees absent on the selected date
         total_employees_absent = Attendance.objects.filter(
-            attendance_date=today,
+            attendance_date=target_date,
             attendance_status=Attendance.AttendanceStatus.ABSENT
         ).values('employee').distinct().count()
         
-        # Total pending approvals
+        # Total pending approvals (this remains global, not filtered by date)
         total_pending_approvals = Attendance.objects.filter(
             approval_status=Attendance.ApprovalStatus.PENDING
         ).count()
