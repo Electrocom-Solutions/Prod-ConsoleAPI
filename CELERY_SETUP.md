@@ -49,6 +49,7 @@ The required packages should already be in `requirements.txt`:
 - `celery`
 - `redis`
 - `django-celery-beat`
+- `flower` (for real-time task monitoring)
 
 Install them:
 ```bash
@@ -117,6 +118,66 @@ You can run both worker and beat in the same process for development:
 cd API
 celery -A API worker --beat -l info
 ```
+
+### 4. Start Celery Flower (Real-time Task Monitoring)
+
+Celery Flower is a web-based tool for monitoring and administrating Celery clusters. It provides real-time monitoring of tasks, workers, and task history.
+
+**Install Flower:**
+```bash
+cd API
+pip install -r requirements.txt
+```
+
+**Start Flower:**
+
+**Option 1: Using the startup script (Recommended):**
+```bash
+cd API
+./start_flower.sh
+```
+
+**Option 2: Using command directly:**
+```bash
+cd API
+celery -A API flower
+```
+
+Flower will start on `http://localhost:5555` by default (or the port specified in `.env` file).
+
+**With Basic Authentication (Recommended for Production):**
+```bash
+celery -A API flower --basic_auth=admin:password
+```
+
+**With Custom Port:**
+```bash
+celery -A API flower --port=5555
+```
+
+**For production, run in the background:**
+```bash
+celery -A API flower --basic_auth=admin:password --port=5555 --detach
+```
+
+**Access Flower Web Interface:**
+- Open your browser and navigate to: `http://localhost:5555`
+- If you set basic authentication, use the credentials you specified
+- You'll see real-time information about:
+  - Active tasks
+  - Scheduled tasks
+  - Task history
+  - Worker status
+  - Task statistics
+  - Task details and results
+
+**Flower Features:**
+- **Real-time monitoring**: See tasks as they execute
+- **Task history**: View completed, failed, and pending tasks
+- **Worker management**: Monitor worker status and performance
+- **Task details**: View task arguments, results, and tracebacks
+- **Statistics**: View task execution statistics and graphs
+- **Task control**: Revoke or terminate tasks
 
 ## How Scheduled Tasks Work
 
@@ -197,6 +258,38 @@ celery -A API worker --beat -l info
 3. **Verify task registration:**
    - Ensure tasks are registered: `celery -A API inspect registered`
 
+### Flower Not Accessible
+
+1. **Check if Flower is running:**
+   ```bash
+   ps aux | grep flower
+   ```
+
+2. **Check if port 5555 is in use:**
+   ```bash
+   lsof -i :5555
+   # or
+   netstat -an | grep 5555
+   ```
+
+3. **Try accessing with different port:**
+   ```bash
+   celery -A API flower --port=5556
+   ```
+
+4. **Check Flower logs:**
+   - Look for error messages in the Flower output
+   - Check for connection issues with Redis broker
+
+5. **Verify Redis is running:**
+   ```bash
+   redis-cli ping
+   ```
+
+6. **Check firewall settings:**
+   - Ensure port 5555 (or your custom port) is open
+   - For production, consider using a reverse proxy (nginx) with authentication
+
 ## Production Deployment
 
 ### Using systemd (Linux)
@@ -241,12 +334,32 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
+**`/etc/systemd/system/celery-flower.service`:**
+```ini
+[Unit]
+Description=Celery Flower
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/API
+ExecStart=/path/to/venv/bin/celery -A API flower --basic_auth=admin:password --port=5555
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
 Enable and start services:
 ```bash
 sudo systemctl enable celery-worker
 sudo systemctl enable celery-beat
+sudo systemctl enable celery-flower
 sudo systemctl start celery-worker
 sudo systemctl start celery-beat
+sudo systemctl start celery-flower
 ```
 
 ### Using Supervisor
@@ -277,17 +390,49 @@ redirect_stderr=true
 stdout_logfile=/var/log/celery/beat.log
 ```
 
+**`/etc/supervisor/conf.d/celery-flower.conf`:**
+```ini
+[program:celery-flower]
+command=/path/to/venv/bin/celery -A API flower --basic_auth=admin:password --port=5555
+directory=/path/to/API
+user=www-data
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/celery/flower.log
+```
+
 Reload supervisor:
 ```bash
 sudo supervisorctl reread
 sudo supervisorctl update
 sudo supervisorctl start celery-worker
 sudo supervisorctl start celery-beat
+sudo supervisorctl start celery-flower
 ```
 
 ## Monitoring
 
-### Check Celery Worker Status
+### Using Celery Flower (Recommended)
+
+The easiest way to monitor Celery tasks is through the Flower web interface:
+
+1. **Start Flower** (if not already running):
+   ```bash
+   cd API
+   celery -A API flower
+   ```
+
+2. **Access Flower** at `http://localhost:5555`
+
+3. **Monitor in real-time**:
+   - View active tasks as they execute
+   - Check task history and results
+   - Monitor worker status
+   - View task statistics and graphs
+   - Revoke or terminate tasks if needed
+
+### Check Celery Worker Status (Command Line)
 
 ```bash
 celery -A API inspect active
@@ -304,6 +449,7 @@ If using `django-db` backend, task results are stored in the database and can be
 - **Celery Worker logs**: Check the output of the celery worker process
 - **Django logs**: Check Django application logs for task execution details
 - **Redis logs**: Check Redis logs for broker connection issues
+- **Flower logs**: Check Flower output for monitoring interface issues
 
 ## Important Notes
 
